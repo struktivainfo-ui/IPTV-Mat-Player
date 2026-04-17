@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">IPTV Mat Player</string>
+    <string name="title_activity_main">IPTV Mat Player</string>
+    <string name="package_name">app.vercel.iptvmatplayer</string>
+    <string name="custom_url_scheme">app.vercel.iptvmatplayer</string>
+</resources>

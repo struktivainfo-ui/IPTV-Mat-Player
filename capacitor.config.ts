@@ -1,0 +1,12 @@
+import type { CapacitorConfig } from "@capacitor/cli";
+
+const config: CapacitorConfig = {
+  appId: "app.vercel.iptvmatplayer",
+  appName: "IPTV Mat Player",
+  webDir: "dist",
+  server: {
+    androidScheme: "https",
+  },
+};
+
+export default config;

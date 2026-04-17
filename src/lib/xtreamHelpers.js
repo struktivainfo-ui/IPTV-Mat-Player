@@ -109,7 +109,7 @@ export function shouldUseProxy(url, connectionMode = "auto", imported = false) {
 
 export function resolvePlaybackUrl(item, connectionMode = "auto") {
   const directUrl = buildDirectStreamUrl(item);
-  const imported = Boolean(item?.server && item?.username && item?.password);
+  const imported = Boolean(item?.imported);
 
   if (!directUrl) {
     return "";
@@ -131,7 +131,7 @@ export function describeConnectionMode(item, connectionMode = "auto") {
     return "Direkter Browserzugriff";
   }
 
-  if (item.server && item.username && item.password && !isLocalRuntime()) {
+  if (item.imported && !isLocalRuntime()) {
     return "Auto-Modus nutzt den Vercel-Proxy";
   }
 

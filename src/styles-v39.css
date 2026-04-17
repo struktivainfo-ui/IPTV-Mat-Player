@@ -335,9 +335,14 @@ input::placeholder {
 .guideList,
 .infoPanel,
 .detailsHero,
-.savedServerList {
+.savedServerList,
+.fieldGrid {
   display: grid;
   gap: 12px;
+}
+
+.inputHint {
+  margin-top: 4px;
 }
 
 .guideRow,

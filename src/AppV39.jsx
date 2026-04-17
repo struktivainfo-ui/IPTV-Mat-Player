@@ -14,6 +14,7 @@ import {
 import {
   describeConnectionMode,
   explainNetworkError,
+  fetchJsonWithTimeout,
   fetchXtreamJson,
   pickFirstSeriesEpisode,
   resolvePlaybackUrl,
@@ -41,6 +42,21 @@ const CATEGORY_ACTIONS = {
   series: "get_series_categories",
 };
 
+const SOURCE_TYPES = [
+  ["xtream", "Xtream"],
+  ["m3u", "M3U"],
+  ["stbemu", "STBEmu"],
+];
+
+const SOURCE_LABELS = {
+  xtream: "Xtream",
+  m3u: "M3U",
+  stbemu: "STBEmu",
+  demo: "Demo",
+};
+
+const STB_STREAM_CACHE_MS = 5 * 60 * 1000;
+
 function persistState(key, value, setter) {
   save(key, value);
   setter(value);
@@ -57,10 +73,38 @@ function readSettings() {
 function readAuth(settings) {
   const auth = load("auth", DEFAULT_AUTH_V39) || DEFAULT_AUTH_V39;
   return {
+    sourceType: auth.sourceType || "xtream",
     server: auth.server || "",
     username: auth.username || "",
     password: settings.rememberCredentials ? auth.password || "" : "",
+    m3uUrl: auth.m3uUrl || "",
+    portalUrl: auth.portalUrl || "",
+    macAddress: auth.macAddress || "",
   };
+}
+
+function getSourceLabel(sourceType, imported = false) {
+  if (!imported) {
+    return SOURCE_LABELS.demo;
+  }
+
+  return SOURCE_LABELS[sourceType] || SOURCE_LABELS.xtream;
+}
+
+function getFallbackCover(item) {
+  if (!item) {
+    return DEMO_ITEMS_V39[0].cover;
+  }
+
+  if (item.section === "movie") {
+    return DEMO_ITEMS_V39[2].cover;
+  }
+
+  if (item.section === "series") {
+    return DEMO_ITEMS_V39[4].cover;
+  }
+
+  return DEMO_ITEMS_V39[0].cover;
 }
 
 function toCategoryMap(entries) {
@@ -88,6 +132,7 @@ function createImportedItem(kind, entry, index, auth, categoryMaps, fallbackCove
 
   const baseItem = {
     imported: true,
+    sourceType: "xtream",
     server: auth.server,
     username: auth.username,
     password: auth.password,
@@ -149,7 +194,7 @@ function createImportedItem(kind, entry, index, auth, categoryMaps, fallbackCove
   };
 }
 
-function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connectionLabel }) {
+function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connectionLabel, isPreparing = false }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const onProgressRef = useRef(onProgress);
@@ -185,6 +230,12 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
 
     if (!url) {
       cleanup();
+      if (isPreparing) {
+        setPhase("loading");
+        setError("");
+        return cleanup;
+      }
+
       setPhase("idle");
       setError("Fuer diesen Eintrag ist noch kein abspielbarer Stream verfuegbar.");
       return cleanup;
@@ -280,7 +331,7 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
       video.removeEventListener("error", handleError);
       cleanup();
     };
-  }, [autoplay, isHls, item?.title, url]);
+  }, [autoplay, isHls, isPreparing, item?.title, url]);
 
   return (
     <div className="playerShell">
@@ -331,7 +382,7 @@ function StatCard({ label, value, hint }) {
 function PosterCard({ item, onClick, compact, isFavorite, isRecent }) {
   return (
     <button className={`posterCard ${compact ? "posterCardCompact" : ""}`} onClick={onClick}>
-      <img src={item.cover} alt={item.title} />
+      <img src={item.cover || getFallbackCover(item)} alt={item.title} />
       <div className="posterBody">
         <div className="posterHeader">
           <span className="miniBadge">{item.badge}</span>
@@ -388,13 +439,24 @@ export default function AppV39() {
   const [newProfile, setNewProfile] = useState("");
   const [page, setPage] = useState("home");
   const [isResolvingSeries, setIsResolvingSeries] = useState(false);
+  const [isPreparingPlayback, setIsPreparingPlayback] = useState(true);
+  const [resolvedPlaybackUrl, setResolvedPlaybackUrl] = useState("");
   const [categoryMaps, setCategoryMaps] = useState(() => load("categoryMaps", { live: {}, movie: {}, series: {} }));
 
   const selected = items.find((item) => item.id === selectedId) || items[0] || null;
-  const playbackUrl = useMemo(() => resolvePlaybackUrl(selected, settings.connectionMode), [selected, settings.connectionMode]);
+  const selectedSourceLabel = useMemo(
+    () => getSourceLabel(selected?.sourceType, selected?.imported),
+    [selected?.imported, selected?.sourceType]
+  );
+  const playbackUrl = resolvedPlaybackUrl;
   const isSelectedHls = useMemo(
-    () => Boolean(selected && (selected.streamExt === "m3u8" || String(selected.streamUrl || "").includes(".m3u8"))),
-    [selected]
+    () =>
+      Boolean(
+        selected &&
+          (String(playbackUrl || "").toLowerCase().includes(".m3u8") ||
+            String(selected.streamUrl || "").toLowerCase().includes(".m3u8"))
+      ),
+    [playbackUrl, selected]
   );
   const connectionLabel = useMemo(
     () => describeConnectionMode(selected, settings.connectionMode),
@@ -466,9 +528,13 @@ export default function AppV39() {
 
   function persistAuth(nextAuth) {
     const storedAuth = {
+      sourceType: nextAuth.sourceType || "xtream",
       server: nextAuth.server,
       username: nextAuth.username,
       password: settings.rememberCredentials ? nextAuth.password : "",
+      m3uUrl: nextAuth.m3uUrl,
+      portalUrl: nextAuth.portalUrl,
+      macAddress: nextAuth.macAddress,
     };
     save("auth", storedAuth);
     setAuth(nextAuth);
@@ -482,6 +548,64 @@ export default function AppV39() {
   function toggleFavorite(id) {
     const nextWatchlist = toggleEntry(watchlist, id);
     persistState("watchlist", nextWatchlist, setWatchlist);
+  }
+
+  function requireAuthFields() {
+    if (auth.sourceType === "m3u") {
+      return auth.m3uUrl ? "" : "Bitte die M3U-Playlist-URL eintragen.";
+    }
+
+    if (auth.sourceType === "stbemu") {
+      if (!auth.portalUrl) {
+        return "Bitte die Portal-URL fuer STBEmu eintragen.";
+      }
+
+      if (!auth.macAddress) {
+        return "Bitte die MAC-Adresse fuer STBEmu eintragen.";
+      }
+
+      return "";
+    }
+
+    if (!auth.server || !auth.username || !auth.password) {
+      return "Bitte Server, Benutzername und Passwort ausfuellen.";
+    }
+
+    return "";
+  }
+
+  function applyImportedLibrary(mapped, nextStatus, nextCategoryMaps = { live: {}, movie: {}, series: {} }) {
+    if (!mapped.length) {
+      throw new Error("Keine Eintraege gefunden.");
+    }
+
+    const nextSelected = mapped.find((entry) => entry.section === "live" || entry.section === "movie") || mapped[0];
+    const timestamp = new Date().toLocaleString("de-DE");
+
+    startTransition(() => {
+      persistState("categoryMaps", nextCategoryMaps, setCategoryMaps);
+      persistState("items", mapped, setItems);
+      persistState("selectedId", nextSelected.id, setSelectedId);
+      persistState("importCount", mapped.length, setImportCount);
+      persistState("lastImportAt", timestamp, setLastImportAt);
+    });
+
+    touchRecent(nextSelected.id);
+    setIsPreparingPlayback(true);
+    setResolvedPlaybackUrl("");
+    setCategoryFilter("all");
+    setPage("home");
+    setStatus(nextStatus || `${mapped.length} Eintraege importiert.`);
+  }
+
+  async function postJson(endpoint, payload) {
+    return fetchJsonWithTimeout(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
   }
 
   function handleProgress(percent) {
@@ -551,19 +675,177 @@ export default function AppV39() {
     persistState("selectedId", item.id, setSelectedId);
     touchRecent(item.id);
     setPage(nextPage);
+    setIsPreparingPlayback(true);
+    setResolvedPlaybackUrl("");
 
-    if (item.section === "series" && item.imported && !item.streamId) {
+    if (item.section === "series" && item.imported && item.sourceType === "xtream" && !item.streamId) {
       await ensureSeriesEpisode(item.id);
     }
   }
 
+  async function resolveStbStream(item) {
+    if (!item?.stbCmd) {
+      throw new Error("Dieser STBEmu-Kanal liefert keinen gueltigen Portal-Befehl.");
+    }
+
+    const isFresh =
+      item?.streamUrl && item?.resolvedAt && Date.now() - Number(item.resolvedAt) < STB_STREAM_CACHE_MS;
+
+    if (isFresh) {
+      return item.streamUrl;
+    }
+
+    const payload = await postJson("/api/stb", {
+      mode: "resolve",
+      portalUrl: item.portalUrl,
+      macAddress: item.macAddress,
+      cmd: item.stbCmd,
+    });
+
+    if (!payload?.streamUrl) {
+      throw new Error("STBEmu hat keine abspielbare Stream-URL geliefert.");
+    }
+
+    const nextItems = items.map((entry) =>
+      entry.id === item.id
+        ? {
+            ...entry,
+            streamUrl: payload.streamUrl,
+            streamExt: String(payload.streamUrl || "").toLowerCase().includes(".m3u8")
+              ? "m3u8"
+              : String(payload.streamUrl || "").toLowerCase().includes(".mp4")
+                ? "mp4"
+                : entry.streamExt,
+            resolvedAt: Date.now(),
+          }
+        : entry
+    );
+
+    startTransition(() => {
+      persistState("items", nextItems, setItems);
+    });
+
+    return payload.streamUrl;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!selected) {
+      setResolvedPlaybackUrl("");
+      return undefined;
+    }
+
+    async function preparePlayback() {
+      setIsPreparingPlayback(true);
+
+      try {
+        let nextItem = selected;
+
+        if (nextItem.sourceType === "stbemu") {
+          setStatus(`STBEmu-Link wird fuer ${nextItem.title} vorbereitet ...`);
+          const streamUrl = await resolveStbStream(nextItem);
+
+          if (cancelled) {
+            return;
+          }
+
+          nextItem = { ...nextItem, streamUrl };
+        }
+
+        const nextUrl = resolvePlaybackUrl(nextItem, settings.connectionMode);
+
+        if (cancelled) {
+          return;
+        }
+
+        setResolvedPlaybackUrl(nextUrl);
+
+        if (!nextUrl && nextItem.section === "series" && nextItem.imported && nextItem.sourceType === "xtream") {
+          setStatus("Diese Serie braucht zuerst eine Episode. Tippe auf 'Episode laden'.");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setResolvedPlaybackUrl("");
+          setStatus(error?.message || explainNetworkError(error, settings.connectionMode));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsPreparingPlayback(false);
+        }
+      }
+    }
+
+    preparePlayback();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selected?.id,
+    selected?.sourceType,
+    selected?.streamId,
+    selected?.streamUrl,
+    selected?.resolvedAt,
+    selected?.portalUrl,
+    selected?.macAddress,
+    selected?.stbCmd,
+    selected?.section,
+    selected?.imported,
+    settings.connectionMode,
+  ]);
+
   async function handleImport() {
-    if (!auth.server || !auth.username || !auth.password) {
-      setStatus("Bitte Server, Benutzername und Passwort ausfuellen.");
+    const validationMessage = requireAuthFields();
+
+    if (validationMessage) {
+      setStatus(validationMessage);
       return;
     }
 
     try {
+      if (auth.sourceType === "m3u") {
+        setStatus("M3U-Playlist wird geladen ...");
+
+        const payload = await postJson("/api/m3u", {
+          url: auth.m3uUrl,
+        });
+        const mapped = safeTop(payload?.items || [], 200).map((item) => ({
+          ...item,
+          cover: item.cover || getFallbackCover(item),
+          importedAt: Date.now(),
+        }));
+
+        applyImportedLibrary(
+          mapped,
+          `${mapped.length} M3U-Eintraege importiert. Streams laufen stabil ueber Direktzugriff oder Proxy.`,
+          { live: {}, movie: {}, series: {} }
+        );
+        return;
+      }
+
+      if (auth.sourceType === "stbemu") {
+        setStatus("STBEmu-Portal wird geladen ...");
+
+        const payload = await postJson("/api/stb", {
+          mode: "import",
+          portalUrl: auth.portalUrl,
+          macAddress: auth.macAddress,
+        });
+        const mapped = safeTop(payload?.items || [], 160).map((item) => ({
+          ...item,
+          cover: item.cover || getFallbackCover(item),
+          importedAt: Date.now(),
+        }));
+
+        applyImportedLibrary(
+          mapped,
+          `${mapped.length} STBEmu-Kanaele importiert. Stream-Links werden beim Oeffnen frisch aufgeloest.`,
+          { live: {}, movie: {}, series: {} }
+        );
+        return;
+      }
+
       setStatus("Xtream-Daten werden geladen ...");
 
       const [live, vod, series, liveCategories, movieCategories, seriesCategories] = await Promise.all([
@@ -629,36 +911,19 @@ export default function AppV39() {
         ),
       ];
 
-      if (!mapped.length) {
-        throw new Error("Keine Eintraege gefunden.");
-      }
-
-      const nextSelected =
-        mapped.find((entry) => entry.streamType === "live" || entry.streamType === "movie") || mapped[0];
-      const timestamp = new Date().toLocaleString("de-DE");
-
-      startTransition(() => {
-        persistState("categoryMaps", nextCategoryMaps, setCategoryMaps);
-        persistState("items", mapped, setItems);
-        persistState("selectedId", nextSelected.id, setSelectedId);
-        persistState("importCount", mapped.length, setImportCount);
-        persistState("lastImportAt", timestamp, setLastImportAt);
-      });
-
-      touchRecent(nextSelected.id);
-      setCategoryFilter("all");
-      setPage("home");
-      setStatus(`${mapped.length} Eintraege importiert. Smart Library und Guide wurden aktualisiert.`);
+      applyImportedLibrary(mapped, `${mapped.length} Xtream-Eintraege importiert. Smart Library und Guide wurden aktualisiert.`, nextCategoryMaps);
     } catch (error) {
-      setStatus(explainNetworkError(error, settings.connectionMode));
+      setStatus(error?.message || explainNetworkError(error, settings.connectionMode));
     }
   }
 
   function handleSaveServer() {
-    const trimmedName = newServerName.trim() || auth.server.trim();
+    const identifier = auth.sourceType === "m3u" ? auth.m3uUrl : auth.sourceType === "stbemu" ? auth.portalUrl : auth.server;
+    const trimmedName = newServerName.trim() || String(identifier || "").trim();
+    const validationMessage = requireAuthFields();
 
-    if (!trimmedName || !auth.server || !auth.username) {
-      setStatus("Bitte Name, Server und Benutzername fuer ein Serverprofil angeben.");
+    if (!trimmedName || validationMessage) {
+      setStatus(validationMessage || "Bitte Name und Verbindungsdaten fuer ein Serverprofil angeben.");
       return;
     }
 
@@ -666,9 +931,13 @@ export default function AppV39() {
       {
         id: `server-${Date.now()}`,
         name: trimmedName,
+        sourceType: auth.sourceType,
         server: auth.server,
         username: auth.username,
         password: settings.savePasswords ? auth.password : "",
+        m3uUrl: auth.m3uUrl,
+        portalUrl: auth.portalUrl,
+        macAddress: auth.macAddress,
         savedAt: new Date().toLocaleString("de-DE"),
       },
       ...savedServers,
@@ -681,9 +950,13 @@ export default function AppV39() {
 
   function applySavedServer(server) {
     const nextAuth = {
+      sourceType: server.sourceType || "xtream",
       server: server.server || "",
       username: server.username || "",
       password: server.password || "",
+      m3uUrl: server.m3uUrl || "",
+      portalUrl: server.portalUrl || "",
+      macAddress: server.macAddress || "",
     };
     persistAuth(nextAuth);
     setStatus(`Serverprofil geladen: ${server.name}`);
@@ -713,6 +986,8 @@ export default function AppV39() {
     persistState("importCount", 0, setImportCount);
     persistState("lastImportAt", "", setLastImportAt);
     persistState("categoryMaps", { live: {}, movie: {}, series: {} }, setCategoryMaps);
+    setIsPreparingPlayback(true);
+    setResolvedPlaybackUrl(resolvePlaybackUrl(DEMO_ITEMS_V39[0], settings.connectionMode));
     setStatus("Demo-Bibliothek geladen.");
   }
 
@@ -744,6 +1019,7 @@ export default function AppV39() {
             <span>{connectionLabel}</span>
             <span>{importedItems.length ? `${importedItems.length} Import-Streams` : "Demo-Bibliothek aktiv"}</span>
             <span>{savedServers.length} Serverprofile</span>
+            <span>{selectedSourceLabel} aktiv</span>
           </div>
         </div>
         <button
@@ -779,14 +1055,14 @@ export default function AppV39() {
               <p className="muted">{selected?.description || "Bitte Inhalt waehlen."}</p>
               <div className="heroFacts">
                 <span>{connectionLabel}</span>
-                <span>{selected?.imported ? "Xtream-Quelle" : "Demo-Quelle"}</span>
+                <span>{selected?.imported ? `${selectedSourceLabel}-Quelle` : "Demo-Quelle"}</span>
                 <span>{selected?.episodeTitle || selected?.duration || "Bereit"}</span>
               </div>
               <div className="actions">
                 <button className="primary" onClick={() => selected && toggleFavorite(selected.id)}>
                   {selected && watchlist.includes(selected.id) ? "Aus Favoriten" : "Zu Favoriten"}
                 </button>
-                {selected?.section === "series" && selected?.imported && !selected?.streamId ? (
+                {selected?.section === "series" && selected?.imported && selected?.sourceType === "xtream" && !selected?.streamId ? (
                   <button className="secondary" onClick={() => ensureSeriesEpisode(selected.id)}>
                     Episode laden
                   </button>
@@ -801,6 +1077,7 @@ export default function AppV39() {
               onProgress={handleProgress}
               onStatus={setStatus}
               connectionLabel={connectionLabel}
+              isPreparing={isPreparingPlayback}
             />
           </section>
 
@@ -911,7 +1188,7 @@ export default function AppV39() {
             <span className="muted">{selected.category}</span>
           </div>
           <div className="detailsHero">
-            <img src={selected.cover} alt={selected.title} className="detailsImage" />
+            <img src={selected.cover || getFallbackCover(selected)} alt={selected.title} className="detailsImage" />
             <div className="detailsBody">
               <div className="surfaceLabel">Details & Playback</div>
               <div className="chips">
@@ -923,7 +1200,7 @@ export default function AppV39() {
               <h2>{selected.title}</h2>
               <p className="muted">{selected.description}</p>
               <div className="infoPanel">
-                <span>Quelle: {selected.imported ? "Xtream Import" : "Demo Bibliothek"}</span>
+                <span>Quelle: {selected.imported ? `${selectedSourceLabel} Import` : "Demo Bibliothek"}</span>
                 <span>Verbindungsmodus: {connectionLabel}</span>
                 <span>Fortschritt: {selected.progress || 0}%</span>
               </div>
@@ -931,7 +1208,7 @@ export default function AppV39() {
                 <button className="primary" onClick={() => toggleFavorite(selected.id)}>
                   {watchlist.includes(selected.id) ? "Aus Favoriten" : "Zu Favoriten"}
                 </button>
-                {selected.section === "series" && selected.imported && !selected.streamId ? (
+                {selected.section === "series" && selected.imported && selected.sourceType === "xtream" && !selected.streamId ? (
                   <button className="secondary" onClick={() => ensureSeriesEpisode(selected.id)}>
                     Episode laden
                   </button>
@@ -950,6 +1227,7 @@ export default function AppV39() {
             onProgress={handleProgress}
             onStatus={setStatus}
             connectionLabel={connectionLabel}
+            isPreparing={isPreparingPlayback}
           />
         </section>
       ) : null}
@@ -1025,25 +1303,75 @@ export default function AppV39() {
               <span className="muted">autorisierte Zugriffe</span>
             </div>
             <div className="surfaceLabel">Verbindung</div>
-            <input
-              placeholder="Server-URL"
-              value={auth.server}
-              onChange={(event) => persistAuth({ ...auth, server: event.target.value })}
-            />
-            <input
-              placeholder="Benutzername"
-              value={auth.username}
-              onChange={(event) => persistAuth({ ...auth, username: event.target.value })}
-            />
-            <input
-              placeholder="Passwort"
-              type="password"
-              value={auth.password}
-              onChange={(event) => persistAuth({ ...auth, password: event.target.value })}
-            />
+            <div className="chips">
+              {SOURCE_TYPES.map(([value, label]) => (
+                <button
+                  key={value}
+                  className={`chip ${auth.sourceType === value ? "chipActive" : ""}`}
+                  onClick={() => persistAuth({ ...auth, sourceType: value })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="fieldGrid">
+              {auth.sourceType === "xtream" ? (
+                <>
+                  <input
+                    placeholder="Server-URL"
+                    value={auth.server}
+                    onChange={(event) => persistAuth({ ...auth, server: event.target.value })}
+                  />
+                  <input
+                    placeholder="Benutzername"
+                    value={auth.username}
+                    onChange={(event) => persistAuth({ ...auth, username: event.target.value })}
+                  />
+                  <input
+                    placeholder="Passwort"
+                    type="password"
+                    value={auth.password}
+                    onChange={(event) => persistAuth({ ...auth, password: event.target.value })}
+                  />
+                </>
+              ) : null}
+              {auth.sourceType === "m3u" ? (
+                <>
+                  <input
+                    placeholder="M3U-Playlist-URL"
+                    value={auth.m3uUrl}
+                    onChange={(event) => persistAuth({ ...auth, m3uUrl: event.target.value })}
+                  />
+                  <div className="infoPanel inputHint">
+                    <span>HTTP- oder HTTPS-M3U-Listen werden ueber Direktzugriff oder Proxy stabil geladen.</span>
+                  </div>
+                </>
+              ) : null}
+              {auth.sourceType === "stbemu" ? (
+                <>
+                  <input
+                    placeholder="Portal-URL"
+                    value={auth.portalUrl}
+                    onChange={(event) => persistAuth({ ...auth, portalUrl: event.target.value })}
+                  />
+                  <input
+                    placeholder="MAC-Adresse"
+                    value={auth.macAddress}
+                    onChange={(event) => persistAuth({ ...auth, macAddress: event.target.value.toUpperCase() })}
+                  />
+                  <div className="infoPanel inputHint">
+                    <span>STBEmu-Links werden erst beim Oeffnen des Kanals neu erzeugt, damit die Session stabil bleibt.</span>
+                  </div>
+                </>
+              ) : null}
+            </div>
             <div className="actions">
               <button className="primary" onClick={handleImport}>
-                Xtream importieren
+                {auth.sourceType === "xtream"
+                  ? "Xtream importieren"
+                  : auth.sourceType === "m3u"
+                    ? "M3U importieren"
+                    : "STBEmu importieren"}
               </button>
               <button className="secondary" onClick={resetDemo}>
                 Demo laden
@@ -1072,9 +1400,25 @@ export default function AppV39() {
                   <div key={server.id} className="savedServerCard">
                     <div>
                       <strong>{server.name}</strong>
-                      <div className="small muted">{maskSensitiveValue(server.server, settings.privacyMode)}</div>
+                      <div className="small muted">{getSourceLabel(server.sourceType, true)}-Profil</div>
                       <div className="small muted">
-                        User: {maskSensitiveValue(server.username, settings.privacyMode)} · Passwort: {server.password ? "gespeichert" : "leer"}
+                        {maskSensitiveValue(
+                          server.sourceType === "m3u"
+                            ? server.m3uUrl
+                            : server.sourceType === "stbemu"
+                              ? server.portalUrl
+                              : server.server,
+                          settings.privacyMode
+                        )}
+                      </div>
+                      <div className="small muted">
+                        {server.sourceType === "xtream"
+                          ? `User: ${maskSensitiveValue(server.username, settings.privacyMode)} | Passwort: ${
+                              server.password ? "gespeichert" : "leer"
+                            }`
+                          : server.sourceType === "stbemu"
+                            ? `MAC: ${maskSensitiveValue(server.macAddress, settings.privacyMode)}`
+                            : "Playlist-Profil"}
                       </div>
                     </div>
                     <div className="actions">
@@ -1197,11 +1541,13 @@ export default function AppV39() {
           <section className="card">
             <div className="sectionHead">
               <h3>Status</h3>
-              <span className="muted">{isResolvingSeries ? "Serie wird vorbereitet" : "Live"}</span>
+              <span className="muted">{isResolvingSeries || isPreparingPlayback ? "Wird vorbereitet" : "Live"}</span>
             </div>
             <div className="infoPanel">
               <span>{status}</span>
               <span>{lastImportAt ? `Letzter Import: ${lastImportAt}` : "Noch kein Import ausgefuehrt."}</span>
+              <span>Aktiver Modus: {getSourceLabel(auth.sourceType, true)}</span>
+              <span>{isPreparingPlayback ? "Playback wird vorbereitet ..." : "Playback bereit."}</span>
               <span>
                 Kategorien geladen: {Object.values(categoryMaps.live || {}).length + Object.values(categoryMaps.movie || {}).length + Object.values(categoryMaps.series || {}).length}
               </span>

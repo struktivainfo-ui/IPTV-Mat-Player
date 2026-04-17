@@ -123,9 +123,13 @@ export const DEFAULT_SETTINGS_V39 = {
 };
 
 export const DEFAULT_AUTH_V39 = {
+  sourceType: "xtream",
   server: "",
   username: "",
   password: "",
+  m3uUrl: "",
+  portalUrl: "",
+  macAddress: "",
 };
 
 const GUIDE_SLOT_LABELS = {

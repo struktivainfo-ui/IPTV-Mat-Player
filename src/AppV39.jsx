@@ -152,8 +152,18 @@ function createImportedItem(kind, entry, index, auth, categoryMaps, fallbackCove
 function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connectionLabel }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
+  const onProgressRef = useRef(onProgress);
+  const onStatusRef = useRef(onStatus);
   const [phase, setPhase] = useState(url ? "loading" : "idle");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    onProgressRef.current = onProgress;
+  }, [onProgress]);
+
+  useEffect(() => {
+    onStatusRef.current = onStatus;
+  }, [onStatus]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -182,24 +192,24 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
 
     setError("");
     setPhase("loading");
-    onStatus?.(`${item?.title || "Stream"} wird vorbereitet ...`);
+    onStatusRef.current?.(`${item?.title || "Stream"} wird vorbereitet ...`);
 
     const fail = (message) => {
       setError(message);
       setPhase("error");
-      onStatus?.(message);
+      onStatusRef.current?.(message);
     };
 
     const handleTimeUpdate = () => {
       if (!video.duration || !Number.isFinite(video.duration)) {
         return;
       }
-      onProgress?.(Math.round((video.currentTime / video.duration) * 100));
+      onProgressRef.current?.(Math.round((video.currentTime / video.duration) * 100));
     };
 
     const handleCanPlay = () => {
       setPhase("ready");
-      onStatus?.(`${item?.title || "Stream"} ist bereit.`);
+      onStatusRef.current?.(`${item?.title || "Stream"} ist bereit.`);
       if (autoplay) {
         video.play().catch(() => {});
       }
@@ -270,7 +280,7 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
       video.removeEventListener("error", handleError);
       cleanup();
     };
-  }, [autoplay, isHls, item?.title, onProgress, onStatus, url]);
+  }, [autoplay, isHls, item?.title, url]);
 
   return (
     <div className="playerShell">
@@ -730,6 +740,11 @@ export default function AppV39() {
           <div className="badge">v3.9</div>
           <h1>IPTV Mat Player · {activeProfile}</h1>
           <p className="muted">v3.6 Smart Library · v3.7 TV Guide · v3.8 Serverprofile · v3.9 UX & Sicherheit</p>
+          <div className="workspaceMeta">
+            <span>{connectionLabel}</span>
+            <span>{importedItems.length ? `${importedItems.length} Import-Streams` : "Demo-Bibliothek aktiv"}</span>
+            <span>{savedServers.length} Serverprofile</span>
+          </div>
         </div>
         <button
           className="secondary"
@@ -752,6 +767,7 @@ export default function AppV39() {
 
           <section className="hero">
             <div className="heroLeft">
+              <div className="surfaceLabel">Now Playing</div>
               <div className="chips">
                 {["live", "movie", "series", "all"].map((tab) => (
                   <button key={tab} className={`chip ${contentTab === tab ? "chipActive" : ""}`} onClick={() => setContentTab(tab)}>
@@ -897,6 +913,7 @@ export default function AppV39() {
           <div className="detailsHero">
             <img src={selected.cover} alt={selected.title} className="detailsImage" />
             <div className="detailsBody">
+              <div className="surfaceLabel">Details & Playback</div>
               <div className="chips">
                 <span className="chip chipActive">{selected.badge}</span>
                 <span className="chip">{selected.year}</span>
@@ -1007,6 +1024,7 @@ export default function AppV39() {
               <h3>Import Dashboard</h3>
               <span className="muted">autorisierte Zugriffe</span>
             </div>
+            <div className="surfaceLabel">Verbindung</div>
             <input
               placeholder="Server-URL"
               value={auth.server}

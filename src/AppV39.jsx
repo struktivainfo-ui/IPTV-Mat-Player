@@ -63,6 +63,7 @@ const SOURCE_LABELS = {
 
 const APP_VERSION = "v4.7";
 const PLAYER_RETRY_LIMIT = 2;
+const PLAYBACK_TIMEOUT_MS = 15000;
 const STB_STREAM_CACHE_MS = 5 * 60 * 1000;
 
 function persistState(key, value, setter) {
@@ -144,6 +145,72 @@ function buildQualityLabel(level, index) {
   const height = level?.height ? `${level.height}p` : "";
   const bitrate = level?.bitrate ? `${Math.round(level.bitrate / 1000)} kbps` : "";
   return [height, bitrate].filter(Boolean).join(" | ") || `Qualitaet ${index + 1}`;
+}
+
+function isValidHttpUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    return ["http:", "https:"].includes(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeImportedItems(sourceItems) {
+  const seen = new Set();
+  let invalidCount = 0;
+  let duplicateCount = 0;
+  const items = [];
+
+  for (const item of Array.isArray(sourceItems) ? sourceItems : []) {
+    const title = String(item?.title || "").trim();
+    const streamUrl = String(item?.streamUrl || "").trim();
+    const uniqueKey = item?.id || `${title.toLowerCase()}|${streamUrl}`;
+    const hasStreamSource = Boolean(
+      streamUrl ||
+        (item?.server && item?.username && item?.password && item?.streamId && item?.streamType) ||
+        item?.cmd
+    );
+
+    if (!title || !hasStreamSource) {
+      invalidCount += 1;
+      continue;
+    }
+
+    if (seen.has(uniqueKey)) {
+      duplicateCount += 1;
+      continue;
+    }
+
+    seen.add(uniqueKey);
+    items.push({
+      ...item,
+      title,
+      streamUrl,
+      health: item?.health || "ready",
+      lastCheckedAt: Date.now(),
+    });
+  }
+
+  return {
+    items,
+    invalidCount,
+    duplicateCount,
+  };
+}
+
+function buildImportSummary(label, count, invalidCount = 0, duplicateCount = 0) {
+  const parts = [`${count} ${label} importiert.`];
+
+  if (invalidCount) {
+    parts.push(`${invalidCount} unvollstaendige Eintraege uebersprungen.`);
+  }
+
+  if (duplicateCount) {
+    parts.push(`${duplicateCount} Duplikate bereinigt.`);
+  }
+
+  return parts.join(" ");
 }
 
 function toCategoryMap(entries) {
@@ -254,6 +321,7 @@ function PlayerView({
   const hlsRef = useRef(null);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef(null);
+  const playbackTimeoutRef = useRef(null);
   const onProgressRef = useRef(onProgress);
   const onStatusRef = useRef(onStatus);
   const onPlaybackIssueRef = useRef(onPlaybackIssue);
@@ -303,6 +371,10 @@ function PlayerView({
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
+      }
+      if (playbackTimeoutRef.current) {
+        clearTimeout(playbackTimeoutRef.current);
+        playbackTimeoutRef.current = null;
       }
       if (hlsRef.current) {
         hlsRef.current.destroy();
@@ -359,6 +431,10 @@ function PlayerView({
     };
 
     const handleCanPlay = () => {
+      if (playbackTimeoutRef.current) {
+        clearTimeout(playbackTimeoutRef.current);
+        playbackTimeoutRef.current = null;
+      }
       retryCountRef.current = 0;
       setPhase("ready");
       onPlaybackIssueRef.current?.("");
@@ -373,6 +449,10 @@ function PlayerView({
     };
 
     const handlePlaying = () => {
+      if (playbackTimeoutRef.current) {
+        clearTimeout(playbackTimeoutRef.current);
+        playbackTimeoutRef.current = null;
+      }
       retryCountRef.current = 0;
       setPhase("ready");
       onPlaybackIssueRef.current?.("");
@@ -384,6 +464,9 @@ function PlayerView({
     video.addEventListener("waiting", handleWaiting);
     video.addEventListener("playing", handlePlaying);
     video.addEventListener("error", handleError);
+    playbackTimeoutRef.current = setTimeout(() => {
+      fail("Der Stream hat nicht rechtzeitig auf Wiedergabe reagiert.");
+    }, PLAYBACK_TIMEOUT_MS);
 
     async function setupPlayback() {
       if (isHls) {
@@ -415,6 +498,16 @@ function PlayerView({
           });
           hls.on(Hls.Events.ERROR, (_, data) => {
             if (data?.fatal) {
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                fail("Der HLS-Stream war nicht erreichbar.");
+                return;
+              }
+
+              if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                fail("Der HLS-Stream konnte im Player nicht dekodiert werden.");
+                return;
+              }
+
               fail("Der HLS-Stream konnte nicht geladen werden.");
             }
           });
@@ -602,7 +695,7 @@ export default function AppV39() {
   const [profiles, setProfiles] = useState(() => normalizeProfiles(load("profiles", DEFAULT_PROFILES_V39)));
   const [activeProfile, setActiveProfile] = useState(() => load("activeProfile", DEFAULT_PROFILES_V39[0].name));
   const [settings, setSettings] = useState(readSettings);
-  const [items, setItems] = useState(() => load("items", DEMO_ITEMS_V39));
+  const [items, setItems] = useState(() => sanitizeImportedItems(load("items", DEMO_ITEMS_V39)).items);
   const [watchlist, setWatchlist] = useState(() => load("watchlist", ["movie-1"]));
   const [bouquets, setBouquets] = useState(() => normalizeBouquets(load("bouquets", [])));
   const [activeBouquetId, setActiveBouquetId] = useState(() => load("activeBouquetId", "bouquet-main"));
@@ -619,7 +712,7 @@ export default function AppV39() {
   const [qualityOptions, setQualityOptions] = useState([{ value: -1, label: "Auto" }]);
   const [selectedQuality, setSelectedQuality] = useState(-1);
   const [auth, setAuth] = useState(() => readAuth(readSettings()));
-  const [savedServers, setSavedServers] = useState(() => load("savedServers", []));
+  const [savedServers, setSavedServers] = useState(() => (Array.isArray(load("savedServers", [])) ? load("savedServers", []) : []));
   const [newServerName, setNewServerName] = useState("");
   const [importCount, setImportCount] = useState(() => load("importCount", 0));
   const [lastImportAt, setLastImportAt] = useState(() => load("lastImportAt", ""));
@@ -876,12 +969,20 @@ export default function AppV39() {
 
   function requireAuthFields() {
     if (auth.sourceType === "m3u") {
-      return auth.m3uUrl ? "" : "Bitte die M3U-Playlist-URL eintragen.";
+      if (!auth.m3uUrl) {
+        return "Bitte die M3U-Playlist-URL eintragen.";
+      }
+
+      return isValidHttpUrl(auth.m3uUrl) ? "" : "Bitte eine gueltige M3U-URL mit http oder https verwenden.";
     }
 
     if (auth.sourceType === "stbemu") {
       if (!auth.portalUrl) {
         return "Bitte die Portal-URL fuer STBEmu eintragen.";
+      }
+
+      if (!isValidHttpUrl(auth.portalUrl)) {
+        return "Bitte eine gueltige Portal-URL mit http oder https verwenden.";
       }
 
       if (!auth.macAddress) {
@@ -895,23 +996,33 @@ export default function AppV39() {
       return "Bitte Server, Benutzername und Passwort ausfuellen.";
     }
 
+    if (!isValidHttpUrl(auth.server)) {
+      return "Bitte eine gueltige Server-URL mit http oder https verwenden.";
+    }
+
     return "";
   }
 
   function applyImportedLibrary(mapped, nextStatus, nextCategoryMaps = { live: {}, movie: {}, series: {} }) {
-    if (!mapped.length) {
+    const { items: cleanedItems, invalidCount, duplicateCount } = sanitizeImportedItems(mapped);
+
+    if (!cleanedItems.length) {
       throw new Error("Keine Eintraege gefunden.");
     }
 
-    const nextSelected = mapped.find((entry) => entry.section === "live" || entry.section === "movie") || mapped[0];
+    const nextSelected =
+      cleanedItems.find((entry) => entry.section === "live" || entry.section === "movie") || cleanedItems[0];
     const timestamp = new Date().toLocaleString("de-DE");
+    const finalStatus =
+      nextStatus ||
+      buildImportSummary("Eintraege", cleanedItems.length, invalidCount, duplicateCount);
 
     startTransition(() => {
       persistState("categoryMaps", nextCategoryMaps, setCategoryMaps);
       persistState("guideDataById", {}, setGuideDataById);
-      persistState("items", mapped, setItems);
+      persistState("items", cleanedItems, setItems);
       persistState("selectedId", nextSelected.id, setSelectedId);
-      persistState("importCount", mapped.length, setImportCount);
+      persistState("importCount", cleanedItems.length, setImportCount);
       persistState("lastImportAt", timestamp, setLastImportAt);
       persistState("lastGuideSyncAt", "", setLastGuideSyncAt);
     });
@@ -921,7 +1032,11 @@ export default function AppV39() {
     setResolvedPlaybackUrl("");
     setCategoryFilter("all");
     setPage("home");
-    setStatus(nextStatus || `${mapped.length} Eintraege importiert.`);
+    setStatus(
+      invalidCount || duplicateCount
+        ? `${finalStatus} Stabilitaetspruefung abgeschlossen.`
+        : finalStatus
+    );
   }
 
   async function postJson(endpoint, payload) {
@@ -1451,7 +1566,7 @@ export default function AppV39() {
 
         applyImportedLibrary(
           mapped,
-          `${mapped.length} M3U-Eintraege importiert. Streams laufen stabil ueber Direktzugriff oder Proxy.`,
+          buildImportSummary("M3U-Eintraege", mapped.length, payload?.meta?.invalidCount || 0, payload?.meta?.duplicateCount || 0),
           { live: {}, movie: {}, series: {} }
         );
         return;
@@ -1474,7 +1589,7 @@ export default function AppV39() {
 
         applyImportedLibrary(
           mapped,
-          `${mapped.length} STBEmu-Kanaele importiert. Stream-Links werden beim Oeffnen frisch aufgeloest.`,
+          buildImportSummary("STBEmu-Kanaele", mapped.length),
           { live: {}, movie: {}, series: {} }
         );
         return;
@@ -1548,7 +1663,11 @@ export default function AppV39() {
         epgSourceUrl: auth.epgUrl || item.epgSourceUrl || "",
       }));
 
-      applyImportedLibrary(mapped, `${mapped.length} Xtream-Eintraege importiert. Smart Library und Guide wurden aktualisiert.`, nextCategoryMaps);
+      applyImportedLibrary(
+        mapped,
+        buildImportSummary("Xtream-Eintraege", mapped.length),
+        nextCategoryMaps
+      );
     } catch (error) {
       setStatus(error?.message || explainNetworkError(error, settings.connectionMode));
     }

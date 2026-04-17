@@ -15,12 +15,18 @@ export function load(key, fallback) {
     const raw = readRaw(key);
     return raw ? JSON.parse(raw) : fallback;
   } catch {
+    localStorage.removeItem(PREFIX + key);
+    localStorage.removeItem(LEGACY_PREFIX + key);
     return fallback;
   }
 }
 
 export function save(key, value) {
-  localStorage.setItem(PREFIX + key, JSON.stringify(value));
+  try {
+    localStorage.setItem(PREFIX + key, JSON.stringify(value));
+  } catch {
+    // Ignore quota and serialization issues to keep the app responsive.
+  }
 }
 
 export function remove(key) {

@@ -94,10 +94,24 @@ export async function fetchM3uPlaylist(targetUrl, requestInit = {}) {
 }
 
 export function createM3uItems({ playlistUrl, entries }) {
-  return entries.map((entry, index) => {
+  const seen = new Set();
+
+  return entries.reduce((items, entry, index) => {
+    if (!entry?.title || !entry?.url) {
+      return items;
+    }
+
+    const normalizedUrl = String(entry.url).trim();
+    const signature = `${String(entry.title).trim().toLowerCase()}|${normalizedUrl}`;
+
+    if (!normalizedUrl || seen.has(signature)) {
+      return items;
+    }
+
+    seen.add(signature);
     const section = detectSection(entry.category, entry.title);
 
-    return {
+    items.push({
       id: `m3u-${index}-${entry.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
       title: entry.title,
       category: entry.category || "Unkategorisiert",
@@ -108,8 +122,8 @@ export function createM3uItems({ playlistUrl, entries }) {
       rating: section === "movie" ? "12+" : "0+",
       progress: (index * 3) % 100,
       description: `Importiert aus einer M3U-Playlist${entry.epgId ? ` mit EPG-ID ${entry.epgId}` : ""}.`,
-      streamUrl: entry.url,
-      streamExt: entry.url.toLowerCase().includes(".m3u8") ? "m3u8" : "mp4",
+      streamUrl: normalizedUrl,
+      streamExt: normalizedUrl.toLowerCase().includes(".m3u8") ? "m3u8" : "mp4",
       streamType: section,
       sourceType: "m3u",
       sourceUrl: playlistUrl,
@@ -118,6 +132,8 @@ export function createM3uItems({ playlistUrl, entries }) {
       imported: true,
       cover: entry.logo || "",
       epgChannelId: entry.epgId || "",
-    };
-  });
+    });
+
+    return items;
+  }, []);
 }

@@ -14,6 +14,7 @@ export default async function handler(request) {
         Accept: "*/*",
       },
     });
+    const originalCount = Array.isArray(parsed.entries) ? parsed.entries.length : 0;
     const items = createM3uItems({
       playlistUrl,
       entries: parsed.entries,
@@ -21,7 +22,11 @@ export default async function handler(request) {
 
     return json({
       count: items.length,
-      meta: parsed.meta,
+      meta: {
+        ...parsed.meta,
+        invalidCount: Math.max(0, originalCount - items.length),
+        duplicateCount: 0,
+      },
       items,
     });
   } catch (error) {

@@ -4,8 +4,8 @@
   "description": "Installierbarer IPTV Player mit EPG, DVR-Planer, PIN-Profilen und TV-Modus.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#07111d",
-  "theme_color": "#07111d",
+  "background_color": "#f6f8fc",
+  "theme_color": "#f6f8fc",
   "lang": "de",
   "icons": [
     {

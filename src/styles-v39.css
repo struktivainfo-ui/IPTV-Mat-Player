@@ -1,15 +1,21 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
 
 :root {
-  --bg: #07111d;
-  --card: rgba(10, 20, 38, 0.9);
-  --card-strong: rgba(12, 24, 45, 0.96);
-  --line: rgba(255, 255, 255, 0.08);
-  --muted: #9fb0c9;
-  --text: #f6f8fc;
-  --gold-a: #d9a441;
-  --gold-b: #f7db88;
-  --accent: #47c1ff;
+  --bg: #f6f8fc;
+  --card: rgba(255, 255, 255, 0.88);
+  --card-strong: rgba(255, 255, 255, 0.96);
+  --line: rgba(17, 36, 71, 0.1);
+  --muted: #63738f;
+  --text: #102447;
+  --blue-a: #1d4ed8;
+  --blue-b: #0b2c78;
+  --red-a: #d71943;
+  --red-b: #9f1239;
+  --blue-soft: rgba(29, 78, 216, 0.08);
+  --red-soft: rgba(215, 25, 67, 0.08);
+  --surface-soft: rgba(243, 247, 255, 0.92);
+  --surface-strong: #ffffff;
+  --shadow: 0 20px 55px rgba(25, 52, 94, 0.12);
 }
 
 * {
@@ -17,14 +23,15 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
   margin: 0;
   background:
-    radial-gradient(circle at top center, rgba(217, 164, 65, 0.16), transparent 24%),
-    linear-gradient(180deg, #050a12 0%, #07111d 55%, #0b1628 100%);
+    radial-gradient(circle at top left, rgba(215, 25, 67, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(29, 78, 216, 0.14), transparent 32%),
+    linear-gradient(180deg, #ffffff 0%, #f4f7fc 55%, #eef3fb 100%);
   color: var(--text);
   font-family: "Space Grotesk", "Trebuchet MS", sans-serif;
 }
@@ -74,7 +81,7 @@ input {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 26px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
 }
 
@@ -90,8 +97,8 @@ input {
   display: grid;
   gap: 18px;
   background:
-    linear-gradient(135deg, rgba(71, 193, 255, 0.08), transparent 35%),
-    linear-gradient(180deg, rgba(217, 164, 65, 0.08), transparent 55%),
+    radial-gradient(circle at top right, rgba(29, 78, 216, 0.11), transparent 34%),
+    radial-gradient(circle at top left, rgba(215, 25, 67, 0.1), transparent 30%),
     var(--card-strong);
 }
 
@@ -130,9 +137,10 @@ input {
   margin-bottom: 18px;
   padding: 14px 16px;
   border-radius: 22px;
-  background: rgba(7, 12, 22, 0.78);
+  background: rgba(255, 255, 255, 0.84);
   border: 1px solid var(--line);
   backdrop-filter: blur(18px);
+  box-shadow: 0 16px 40px rgba(25, 52, 94, 0.1);
 }
 
 .topbar h1,
@@ -157,14 +165,14 @@ input {
 .navActive,
 .miniBadge,
 .playerBadge {
-  background: linear-gradient(135deg, var(--gold-a), var(--gold-b));
-  color: #111418;
+  background: linear-gradient(135deg, var(--red-a), var(--blue-a));
+  color: #ffffff;
 }
 
 .chip,
 .navBtn,
 .playerState {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.86);
   color: var(--text);
   border: 1px solid var(--line);
 }
@@ -190,7 +198,7 @@ input {
 }
 
 .secondary {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.78);
   color: var(--text);
   border: 1px solid var(--line);
 }
@@ -205,8 +213,9 @@ input {
   padding: 14px 16px;
   border-radius: 16px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.92);
   color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 input::placeholder {
@@ -249,14 +258,14 @@ input::placeholder {
   gap: 6px;
   padding: 7px 11px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(17, 36, 71, 0.08);
 }
 
 .surfaceLabel {
   width: fit-content;
   margin-bottom: 8px;
-  color: var(--text);
+  color: var(--blue-b);
   font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -277,7 +286,7 @@ input::placeholder {
 .heroPoster {
   min-height: 220px;
   border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(17, 36, 71, 0.08);
   background-position: center;
   background-size: cover;
   overflow: hidden;
@@ -297,9 +306,9 @@ input::placeholder {
   align-items: center;
   padding: 7px 11px;
   border-radius: 999px;
-  background: rgba(7, 12, 22, 0.74);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--text);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(17, 36, 71, 0.1);
+  color: var(--blue-b);
   font-size: 12px;
 }
 
@@ -340,11 +349,11 @@ input::placeholder {
 .contentColumn {
   padding: 18px;
   border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(17, 36, 71, 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.02)),
-    rgba(9, 19, 36, 0.92);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.24);
+    linear-gradient(180deg, rgba(29, 78, 216, 0.04), rgba(215, 25, 67, 0.02)),
+    rgba(255, 255, 255, 0.95);
+  box-shadow: 0 18px 44px rgba(25, 52, 94, 0.1);
 }
 
 .contentColumnHeader,
@@ -377,8 +386,8 @@ input::placeholder {
   width: 100%;
   padding: 10px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(17, 36, 71, 0.08);
+  background: rgba(246, 248, 252, 0.96);
   color: var(--text);
   text-align: left;
 }
@@ -391,8 +400,8 @@ input::placeholder {
 }
 
 .contentLaneActive {
-  background: linear-gradient(135deg, rgba(71, 193, 255, 0.16), rgba(217, 164, 65, 0.12));
-  border-color: rgba(247, 219, 136, 0.34);
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.1), rgba(215, 25, 67, 0.08));
+  border-color: rgba(29, 78, 216, 0.22);
 }
 
 .contentLaneBody {
@@ -414,10 +423,10 @@ input::placeholder {
 .posterCard {
   padding: 0;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.94);
   color: var(--text);
   text-align: left;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(17, 36, 71, 0.08);
 }
 
 .posterCardCompact img {
@@ -454,12 +463,12 @@ input::placeholder {
   margin-top: 10px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(17, 36, 71, 0.1);
 }
 
 .progressLine div {
   height: 100%;
-  background: linear-gradient(135deg, var(--accent), var(--gold-a));
+  background: linear-gradient(135deg, var(--red-a), var(--blue-a));
 }
 
 .small {
@@ -495,8 +504,8 @@ input::placeholder {
   text-align: left;
   padding: 14px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(17, 36, 71, 0.08);
+  background: rgba(255, 255, 255, 0.92);
   color: var(--text);
 }
 
@@ -506,8 +515,8 @@ input::placeholder {
 }
 
 .channelChipActive {
-  background: linear-gradient(135deg, rgba(71, 193, 255, 0.2), rgba(217, 164, 65, 0.16));
-  border-color: rgba(247, 219, 136, 0.5);
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.1), rgba(215, 25, 67, 0.08));
+  border-color: rgba(215, 25, 67, 0.24);
 }
 
 .errorPanel,
@@ -516,8 +525,8 @@ input::placeholder {
   gap: 10px;
   padding: 14px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 140, 140, 0.32);
-  background: rgba(120, 18, 18, 0.24);
+  border: 1px solid rgba(215, 25, 67, 0.18);
+  background: rgba(255, 245, 247, 0.96);
 }
 
 .modalCard {
@@ -535,8 +544,8 @@ input::placeholder {
 .savedServerCard {
   padding: 12px 14px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(17, 36, 71, 0.07);
 }
 
 .guideRow {
@@ -587,9 +596,10 @@ input::placeholder {
   gap: 10px;
   padding: 10px;
   border-radius: 24px;
-  background: rgba(7, 12, 22, 0.94);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--line);
   backdrop-filter: blur(16px);
+  box-shadow: 0 18px 42px rgba(25, 52, 94, 0.14);
 }
 
 @media (max-width: 1080px) {

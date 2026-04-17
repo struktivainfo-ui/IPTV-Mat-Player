@@ -1747,7 +1747,7 @@ export default function AppV39() {
               <div
                 className="heroPoster"
                 style={{
-                  backgroundImage: `linear-gradient(180deg, rgba(7, 17, 29, 0.05), rgba(7, 17, 29, 0.84)), url("${selected?.cover || getFallbackCover(selected)}")`,
+                  backgroundImage: `linear-gradient(180deg, rgba(11, 44, 120, 0.08), rgba(11, 44, 120, 0.62)), radial-gradient(circle at top left, rgba(215, 25, 67, 0.28), transparent 42%), url("${selected?.cover || getFallbackCover(selected)}")`,
                 }}
               >
                 <div className="heroPosterMeta">

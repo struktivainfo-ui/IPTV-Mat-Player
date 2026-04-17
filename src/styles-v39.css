@@ -45,7 +45,7 @@ input {
 .loginScreen {
   max-width: 1240px;
   margin: 0 auto;
-  padding: 22px 14px 112px;
+  padding: 22px 14px calc(112px + env(safe-area-inset-bottom, 0px));
   min-height: 100vh;
 }
 
@@ -479,9 +479,46 @@ input::placeholder {
 .infoPanel,
 .detailsHero,
 .savedServerList,
-.fieldGrid {
+.fieldGrid,
+.reliabilityGrid,
+.profileSummaryGrid {
   display: grid;
   gap: 12px;
+}
+
+.reliabilityGrid,
+.profileSummaryGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.reliabilityCard,
+.profileSummaryCard {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(17, 36, 71, 0.08);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.profileSummaryActive {
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.08), rgba(215, 25, 67, 0.06));
+  border-color: rgba(29, 78, 216, 0.18);
+}
+
+.reliabilitypass {
+  border-color: rgba(30, 122, 68, 0.22);
+  background: rgba(240, 253, 244, 0.92);
+}
+
+.reliabilitywarn {
+  border-color: rgba(217, 119, 6, 0.2);
+  background: rgba(255, 251, 235, 0.92);
+}
+
+.reliabilityfail {
+  border-color: rgba(215, 25, 67, 0.2);
+  background: rgba(255, 241, 242, 0.94);
 }
 
 .compactPanel {
@@ -588,7 +625,7 @@ input::placeholder {
 .bottomNav {
   position: fixed;
   left: 50%;
-  bottom: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   width: min(1240px, calc(100% - 20px));
   display: grid;
@@ -604,7 +641,9 @@ input::placeholder {
 
 @media (max-width: 1080px) {
   .dashboardGrid,
-  .contentDeck {
+  .contentDeck,
+  .reliabilityGrid,
+  .profileSummaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -617,7 +656,9 @@ input::placeholder {
   .dashboardGrid,
   .posterGrid,
   .channelRail,
-  .contentDeck {
+  .contentDeck,
+  .reliabilityGrid,
+  .profileSummaryGrid {
     grid-template-columns: 1fr;
   }
 

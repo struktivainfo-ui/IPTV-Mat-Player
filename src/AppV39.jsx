@@ -61,7 +61,7 @@ const SOURCE_LABELS = {
   demo: "Demo",
 };
 
-const APP_VERSION = "v4.7";
+const APP_VERSION = "v5.2";
 const PLAYER_RETRY_LIMIT = 2;
 const PLAYBACK_TIMEOUT_MS = 15000;
 const STB_STREAM_CACHE_MS = 5 * 60 * 1000;
@@ -211,6 +211,103 @@ function buildImportSummary(label, count, invalidCount = 0, duplicateCount = 0) 
   }
 
   return parts.join(" ");
+}
+
+function createReliabilityChecks({
+  items,
+  importedItems,
+  liveItems,
+  movieItems,
+  seriesItems,
+  guideDataById,
+  savedServers,
+  selected,
+  playbackUrl,
+  playerError,
+  isPreparingPlayback,
+  isOnline,
+  recordings,
+  profiles,
+}) {
+  const checks = [
+    {
+      id: "library",
+      label: "Bibliothek",
+      status: items.length >= 3 ? "pass" : "warn",
+      detail: `${items.length} Eintraege verfuegbar`,
+    },
+    {
+      id: "content-balance",
+      label: "Live / VOD / Serien",
+      status: liveItems.length && movieItems.length && seriesItems.length ? "pass" : "warn",
+      detail: `${liveItems.length} Live, ${movieItems.length} VOD, ${seriesItems.length} Serien`,
+    },
+    {
+      id: "guide",
+      label: "Guide-Daten",
+      status: Object.keys(guideDataById || {}).length ? "pass" : "warn",
+      detail: Object.keys(guideDataById || {}).length
+        ? `${Object.keys(guideDataById || {}).length} Kanaele mit EPG`
+        : "Noch keine synchronisierten Guide-Daten",
+    },
+    {
+      id: "playback",
+      label: "Playback",
+      status: playerError ? "fail" : playbackUrl && !isPreparingPlayback ? "pass" : "warn",
+      detail: playerError || (playbackUrl ? "Abspiel-URL vorhanden" : "Noch keine Abspiel-URL aufgebaut"),
+    },
+    {
+      id: "import-sources",
+      label: "Importquellen",
+      status: importedItems.length || savedServers.length ? "pass" : "warn",
+      detail: importedItems.length
+        ? `${importedItems.length} importierte Eintraege aktiv`
+        : savedServers.length
+          ? `${savedServers.length} Serverprofile gespeichert`
+          : "Keine importierten Quellen gespeichert",
+    },
+    {
+      id: "household",
+      label: "Haushalt & Profile",
+      status: profiles.length >= 2 ? "pass" : "warn",
+      detail: `${profiles.length} Profile verfuegbar`,
+    },
+    {
+      id: "recordings",
+      label: "Aufnahme-Planer",
+      status: recordings.length ? "pass" : "warn",
+      detail: recordings.length ? `${recordings.length} geplante Aufnahmen` : "Noch keine Testaufnahme vorgemerkt",
+    },
+    {
+      id: "network",
+      label: "Online-Status",
+      status: isOnline ? "pass" : "fail",
+      detail: isOnline ? "Netzwerk erreichbar" : "Offline erkannt",
+    },
+  ];
+
+  if (selected?.health === "issue") {
+    checks.push({
+      id: "selected-health",
+      label: "Aktueller Titel",
+      status: "fail",
+      detail: selected.healthMessage || "Der aktuell gewaehlte Stream hatte zuletzt ein Problem.",
+    });
+  }
+
+  return checks;
+}
+
+function getReliabilityTone(results) {
+  if (results.some((entry) => entry.status === "fail")) {
+    return "kritisch";
+  }
+
+  if (results.some((entry) => entry.status === "warn")) {
+    return "beobachten";
+  }
+
+  return "stabil";
 }
 
 function toCategoryMap(entries) {
@@ -690,6 +787,7 @@ function BottomNav({ page, setPage }) {
 
 export default function AppV39() {
   const autoGuideSignatureRef = useRef("");
+  const reliabilitySignatureRef = useRef("");
   const videoElementRef = useRef(null);
   const [session, setSession] = useState(() => load("session", null));
   const [profiles, setProfiles] = useState(() => normalizeProfiles(load("profiles", DEFAULT_PROFILES_V39)));
@@ -731,6 +829,8 @@ export default function AppV39() {
   const [guideDataById, setGuideDataById] = useState(() => load("guideDataById", {}));
   const [lastGuideSyncAt, setLastGuideSyncAt] = useState(() => load("lastGuideSyncAt", ""));
   const [recordings, setRecordings] = useState(() => load("recordings", []));
+  const [reliabilityResults, setReliabilityResults] = useState(() => load("reliabilityResults", []));
+  const [lastReliabilityRunAt, setLastReliabilityRunAt] = useState(() => load("lastReliabilityRunAt", ""));
 
   const selected = items.find((item) => item.id === selectedId) || items[0] || null;
   const currentProfile = useMemo(
@@ -840,6 +940,21 @@ export default function AppV39() {
     () => createSecurityNotes(settings, savedServers),
     [savedServers, settings]
   );
+  const profileWatchTotals = useMemo(
+    () =>
+      profiles.map((profile) => ({
+        id: profile.id,
+        name: profile.name,
+        kidsMode: profile.kidsMode,
+        pin: profile.pin,
+        favorites:
+          watchlistItems.filter((item) => (profile.kidsMode ? !["16+", "18+"].includes(item.rating) : true)).length,
+        recent:
+          recentItems.filter((item) => (profile.kidsMode ? !["16+", "18+"].includes(item.rating) : true)).length,
+      })),
+    [profiles, recentItems, watchlistItems]
+  );
+  const reliabilityTone = useMemo(() => getReliabilityTone(reliabilityResults), [reliabilityResults]);
 
   function persistSettings(nextSettings) {
     persistState("settings", nextSettings, setSettings);
@@ -1055,6 +1170,44 @@ export default function AppV39() {
     if (syncLabel) {
       persistState("lastGuideSyncAt", syncLabel, setLastGuideSyncAt);
     }
+  }
+
+  function updateItemHealth(itemId, health, healthMessage = "") {
+    if (!itemId) {
+      return;
+    }
+
+    const nextItems = items.map((entry) => (
+      entry.id === itemId
+        ? { ...entry, health, healthMessage, lastCheckedAt: Date.now() }
+        : entry
+    ));
+
+    persistState("items", nextItems, setItems);
+  }
+
+  function runReliabilityChecks() {
+    const results = createReliabilityChecks({
+      items,
+      importedItems,
+      liveItems,
+      movieItems,
+      seriesItems,
+      guideDataById,
+      savedServers,
+      selected,
+      playbackUrl,
+      playerError,
+      isPreparingPlayback,
+      isOnline,
+      recordings,
+      profiles,
+    });
+    const timestamp = new Date().toLocaleString("de-DE");
+    reliabilitySignatureRef.current = JSON.stringify(results);
+    persistState("reliabilityResults", results, setReliabilityResults);
+    persistState("lastReliabilityRunAt", timestamp, setLastReliabilityRunAt);
+    setStatus(`Reliability Tests abgeschlossen: ${getReliabilityTone(results)}`);
   }
 
   async function loadXmltvGuideData(sourceItems, epgUrl) {
@@ -1537,6 +1690,65 @@ export default function AppV39() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!selected?.id) {
+      return;
+    }
+
+    if (playerError) {
+      if (selected.health !== "issue" || selected.healthMessage !== playerError) {
+        updateItemHealth(selected.id, "issue", playerError);
+      }
+      return;
+    }
+
+    if (!isPreparingPlayback && playbackUrl && selected.health !== "ready") {
+      updateItemHealth(selected.id, "ready", "");
+    }
+  }, [isPreparingPlayback, playbackUrl, playerError, selected]);
+
+  useEffect(() => {
+    const results = createReliabilityChecks({
+      items,
+      importedItems,
+      liveItems,
+      movieItems,
+      seriesItems,
+      guideDataById,
+      savedServers,
+      selected,
+      playbackUrl,
+      playerError,
+      isPreparingPlayback,
+      isOnline,
+      recordings,
+      profiles,
+    });
+    const nextSignature = JSON.stringify(results);
+
+    if (reliabilitySignatureRef.current === nextSignature) {
+      return;
+    }
+
+    reliabilitySignatureRef.current = nextSignature;
+    persistState("reliabilityResults", results, setReliabilityResults);
+  }, [
+    guideDataById,
+    importedItems,
+    isOnline,
+    isPreparingPlayback,
+    items,
+    liveItems,
+    movieItems,
+    playbackUrl,
+    playerError,
+    profiles,
+    recordings,
+    savedServers,
+    selected,
+    seriesItems,
+  ]);
+
   async function handleImport() {
     const validationMessage = requireAuthFields();
 
@@ -1784,7 +1996,7 @@ export default function AppV39() {
         <div>
           <div className="badge">{APP_VERSION}</div>
           <h1>IPTV Mat Player | {activeProfile}</h1>
-          <p className="muted">v4.4 Device Upgrade | v4.5 DVR Prep | v4.6 PIN & Kids | v4.7 PWA App</p>
+          <p className="muted">v4.8 Stability Core | v4.9 Reliability | v5.0 Guide Polish | v5.1 Household | v5.2 Mobile</p>
           <div className="workspaceMeta">
             <span>{connectionLabel}</span>
             <span>{importedItems.length ? `${importedItems.length} Import-Streams` : "Demo-Bibliothek aktiv"}</span>
@@ -2083,6 +2295,13 @@ export default function AppV39() {
                 Guide sync
               </button>
             </div>
+            {selectedGuide ? (
+              <div className="infoPanel">
+                <strong>Live jetzt auf {selected?.title}</strong>
+                <span>{selectedGuide.currentTime} | {selectedGuide.currentTitle}</span>
+                <span>Danach {selectedGuide.nextTime} | {selectedGuide.nextTitle}</span>
+              </div>
+            ) : null}
             <div className="guideList">
               {guideRows.map((row) => (
                 <div key={row.id} className="guideRow">
@@ -2135,6 +2354,7 @@ export default function AppV39() {
                 <span>Quelle: {selected.imported ? `${selectedSourceLabel} Import` : "Demo Bibliothek"}</span>
                 <span>Verbindungsmodus: {connectionLabel}</span>
                 <span>Fortschritt: {selected.progress || 0}%</span>
+                <span>Stream-Health: {selected.health === "issue" ? "Auffaellig" : "Stabil"}</span>
                 {selectedGuide ? <span>Jetzt: {selectedGuide.currentTitle}</span> : null}
                 {selectedGuide ? <span>Danach: {selectedGuide.nextTitle}</span> : null}
               </div>
@@ -2492,6 +2712,30 @@ export default function AppV39() {
 
           <section className="card">
             <div className="sectionHead">
+              <h3>Reliability Center</h3>
+              <span className="muted">{reliabilityTone}</span>
+            </div>
+            <div className="actions">
+              <button className="primary" onClick={runReliabilityChecks}>
+                Reliability Tests starten
+              </button>
+            </div>
+            <div className="infoPanel">
+              <span>{lastReliabilityRunAt ? `Letzter Lauf: ${lastReliabilityRunAt}` : "Noch kein manueller Reliability-Lauf."}</span>
+              <span>Bewertung: {reliabilityTone}</span>
+            </div>
+            <div className="reliabilityGrid">
+              {reliabilityResults.map((entry) => (
+                <div key={entry.id} className={`reliabilityCard reliability${entry.status}`}>
+                  <strong>{entry.label}</strong>
+                  <span className="small muted">{entry.detail}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
               <h3>Verbindung & Sicherheit</h3>
               <span className="muted">{importedItems.length ? `${importedItems.length} importierte Eintraege` : "noch keine Live-Daten"}</span>
             </div>
@@ -2599,6 +2843,16 @@ export default function AppV39() {
                 </button>
               ))}
             </div>
+            <div className="profileSummaryGrid">
+              {profileWatchTotals.map((profile) => (
+                <div key={profile.id} className={`profileSummaryCard ${currentProfile?.id === profile.id ? "profileSummaryActive" : ""}`}>
+                  <strong>{profile.name}</strong>
+                  <span className="small muted">{profile.kidsMode ? "Kids-Profil" : "Standard-Profil"}</span>
+                  <span className="small muted">{profile.pin ? "PIN aktiv" : "Ohne PIN"}</span>
+                  <span className="small muted">{profile.favorites} Favoriten | {profile.recent} zuletzt genutzt</span>
+                </div>
+              ))}
+            </div>
             <div className="profileCreate">
               <input placeholder="Neues Profil" value={newProfile} onChange={(event) => setNewProfile(event.target.value)} />
               <input placeholder="PIN optional" value={newProfilePin} onChange={(event) => setNewProfilePin(event.target.value)} />
@@ -2656,6 +2910,7 @@ export default function AppV39() {
               <span>Status: {isOnline ? "Online" : "Offline"}</span>
               <span>Installieren: {isInstalled ? "bereits installiert" : installPromptEvent ? "moeglich" : "noch nicht verfuegbar"}</span>
               <span>Die App kann jetzt als Startbildschirm-/Desktop-App betrieben werden.</span>
+              <span>Mobile Shell: sichere Abstaende, feste Bottom-Navigation und helles TV-Layout aktiv.</span>
             </div>
             <div className="actions">
               <button className="primary" onClick={installApp}>

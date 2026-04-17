@@ -387,7 +387,7 @@ function PlayerView({
 
     async function setupPlayback() {
       if (isHls) {
-        const { default: Hls } = await import("hls.js");
+        const { default: Hls } = await import("hls.js/light");
 
         if (cancelled) {
           return;

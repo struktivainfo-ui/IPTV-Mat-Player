@@ -1,0 +1,1 @@
+import React from "react"; export default function StatCard({label,value,hint}){return <div className="statCard"><div className="small muted">{label}</div><div className="statValue">{value}</div>{hint?<div className="small muted">{hint}</div>:null}</div> }

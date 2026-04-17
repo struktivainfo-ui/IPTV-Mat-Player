@@ -1,0 +1,1 @@
+import React from "react"; export default function BottomNav({page,setPage}){const items=[["home","Home"],["details","Details"],["watchlist","Watchlist"],["account","Account"]]; return <nav className="bottomNav">{items.map(([key,label])=><button key={key} className={page===key?"navActive":"navBtn"} onClick={()=>setPage(key)}>{label}</button>)}</nav> }

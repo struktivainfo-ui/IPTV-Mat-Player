@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: iptv-mobile-v3-4
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist

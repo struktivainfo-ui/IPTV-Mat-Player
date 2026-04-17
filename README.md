@@ -1,13 +1,13 @@
-# IPTV Mobile v3.4
+# IPTV Mat Player v3.9
 
-Neu in v3.4:
-- echte Bottom-Navigation
-- separater Detailscreen
+Neu in v3.9:
+- Smart Library mit Kategorien, Sortierung, Favoriten und zuletzt geoeffnet
+- TV Guide fuer Jetzt, Prime Time und Spaetprogramm
 - stärkerer Account-Bereich
-- robusterer Import-Status
-- Dashboard, EPG, Watchlist, Continue Watching
-- Login / Session
-- stabiler HLS Player
+- robusterer Xtream-Import mit Kategoriemapping und Serienaufloesung
+- gespeicherte Serverprofile und Privacy Mode
+- Mobile UX und Vercel-freundlicher Proxy
+- Login, Session und HLS-Player bleiben erhalten
 
 ## Start
 ```bash
@@ -15,8 +15,8 @@ npm install
 npm run dev
 ```
 
-## Render
-- Build Command: npm install && npm run build
-- Publish Directory: dist
+## Vercel
+- Build Command: npm run build
+- Output Directory: dist
 
 Nur für eigene oder autorisierte Zugänge gedacht.

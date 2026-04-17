@@ -1,4 +1,5 @@
-import React,{useMemo,useState} from "react";
+export { default } from "./AppV39.jsx";
+/*
 import Login from "./components/Login.jsx";
 import Player from "./components/Player.jsx";
 import PosterCard from "./components/PosterCard.jsx";
@@ -127,3 +128,4 @@ return <div className={`app ${settings.compactMode?"compactMode":""}`}>
 
 <BottomNav page={page} setPage={setPage} />
 </div>}
+*/

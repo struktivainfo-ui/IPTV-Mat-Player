@@ -1,10 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import AppV35 from "./AppV35.jsx";
-import "./styles-v35.css";
+import AppV39 from "./AppV39.jsx";
+import "./styles-v39.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <AppV35 />
+    <AppV39 />
   </React.StrictMode>
 );

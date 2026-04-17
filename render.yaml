@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: iptv-mobile-v3-4
+    name: iptv-mat-player-v39
     env: static
     buildCommand: npm install && npm run build
     staticPublishPath: dist

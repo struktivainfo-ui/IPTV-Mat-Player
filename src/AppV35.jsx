@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+export { default } from "./AppV39.jsx";
+/*
 import Hls from "hls.js";
 import { load, save } from "./lib/storage.js";
 import { DEFAULT_PROFILES_V35, DEFAULT_SETTINGS_V35, DEMO_EPG_V35, DEMO_ITEMS_V35 } from "./lib/demoCatalogV35.js";
@@ -45,6 +46,7 @@ function LoginView({ onLogin }) {
     </div>
   );
 }
+*/
 
 function StatCard({ label, value, hint }) {
   return (

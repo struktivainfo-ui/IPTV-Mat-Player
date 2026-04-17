@@ -1,0 +1,1198 @@
+import React, { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { load, remove, save } from "./lib/storage.js";
+import {
+  buildGuideRows,
+  createSecurityNotes,
+  DEFAULT_AUTH_V39,
+  DEFAULT_PROFILES_V39,
+  DEFAULT_SETTINGS_V39,
+  DEMO_ITEMS_V39,
+  getCategoryOptions,
+  maskSensitiveValue,
+  sortLibraryItems,
+} from "./lib/appDataV39.js";
+import {
+  describeConnectionMode,
+  explainNetworkError,
+  fetchXtreamJson,
+  pickFirstSeriesEpisode,
+  resolvePlaybackUrl,
+  safeTop,
+} from "./lib/xtreamHelpers.js";
+
+const NAV_ITEMS = [
+  ["home", "Home"],
+  ["details", "Details"],
+  ["watchlist", "Watchlist"],
+  ["account", "Account"],
+];
+
+const PLAYER_LABELS = {
+  idle: "Kein Stream",
+  loading: "Vorbereitung",
+  ready: "Bereit",
+  buffering: "Buffering",
+  error: "Fehler",
+};
+
+const CATEGORY_ACTIONS = {
+  live: "get_live_categories",
+  movie: "get_vod_categories",
+  series: "get_series_categories",
+};
+
+function persistState(key, value, setter) {
+  save(key, value);
+  setter(value);
+}
+
+function toggleEntry(list, value) {
+  return list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value];
+}
+
+function readSettings() {
+  return { ...DEFAULT_SETTINGS_V39, ...(load("settings", DEFAULT_SETTINGS_V39) || {}) };
+}
+
+function readAuth(settings) {
+  const auth = load("auth", DEFAULT_AUTH_V39) || DEFAULT_AUTH_V39;
+  return {
+    server: auth.server || "",
+    username: auth.username || "",
+    password: settings.rememberCredentials ? auth.password || "" : "",
+  };
+}
+
+function toCategoryMap(entries) {
+  if (!Array.isArray(entries)) {
+    return {};
+  }
+
+  return entries.reduce((accumulator, entry) => {
+    const key = String(entry.category_id || entry.id || "");
+    if (key) {
+      accumulator[key] = entry.category_name || entry.name || "Unkategorisiert";
+    }
+    return accumulator;
+  }, {});
+}
+
+function createImportedItem(kind, entry, index, auth, categoryMaps, fallbackCover) {
+  const section = kind === "movie" ? "movie" : kind;
+  const categoryMap = categoryMaps[section] || {};
+  const categoryId = String(entry.category_id || "");
+  const category =
+    entry.category_name ||
+    categoryMap[categoryId] ||
+    (kind === "live" ? "Live TV" : kind === "movie" ? "Filme" : "Serien");
+
+  const baseItem = {
+    imported: true,
+    server: auth.server,
+    username: auth.username,
+    password: auth.password,
+    category,
+    categoryId,
+    cover: entry.stream_icon || entry.cover || fallbackCover,
+    progress: (index * (kind === "live" ? 5 : kind === "movie" ? 9 : 7)) % 100,
+    importedAt: Date.now(),
+  };
+
+  if (kind === "live") {
+    return {
+      ...baseItem,
+      id: `live-${entry.stream_id}`,
+      title: entry.name || `Live ${entry.stream_id}`,
+      section: "live",
+      badge: "Live",
+      year: "2026",
+      duration: "Live",
+      rating: "0+",
+      description: "Importierter Live-Eintrag mit Guide- und Favoriten-Unterstuetzung.",
+      streamType: "live",
+      streamId: String(entry.stream_id),
+      streamExt: entry.container_extension || "m3u8",
+      epgChannelId: entry.epg_channel_id || "",
+    };
+  }
+
+  if (kind === "movie") {
+    return {
+      ...baseItem,
+      id: `movie-${entry.stream_id}`,
+      title: entry.name || `Film ${entry.stream_id}`,
+      section: "movie",
+      badge: "Movie",
+      year: "2026",
+      duration: "Film",
+      rating: "12+",
+      description: "Importierter Film mit Continue Watching und Bibliotheksfiltern.",
+      streamType: "movie",
+      streamId: String(entry.stream_id),
+      streamExt: entry.container_extension || "mp4",
+    };
+  }
+
+  return {
+    ...baseItem,
+    id: `series-${entry.series_id || index}`,
+    title: entry.name || `Serie ${index + 1}`,
+    section: "series",
+    badge: "Serie",
+    year: "2026",
+    duration: "Serie",
+    rating: "12+",
+    description: "Importierte Serie. Die erste Episode wird bei Bedarf automatisch aufgeloest.",
+    streamType: "series",
+    seriesId: String(entry.series_id || entry.stream_id || index),
+    pendingEpisodeLookup: true,
+  };
+}
+
+function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connectionLabel }) {
+  const videoRef = useRef(null);
+  const hlsRef = useRef(null);
+  const [phase, setPhase] = useState(url ? "loading" : "idle");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const video = videoRef.current;
+    let cancelled = false;
+
+    if (!video) {
+      return undefined;
+    }
+
+    const cleanup = () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    };
+
+    if (!url) {
+      cleanup();
+      setPhase("idle");
+      setError("Fuer diesen Eintrag ist noch kein abspielbarer Stream verfuegbar.");
+      return cleanup;
+    }
+
+    setError("");
+    setPhase("loading");
+    onStatus?.(`${item?.title || "Stream"} wird vorbereitet ...`);
+
+    const fail = (message) => {
+      setError(message);
+      setPhase("error");
+      onStatus?.(message);
+    };
+
+    const handleTimeUpdate = () => {
+      if (!video.duration || !Number.isFinite(video.duration)) {
+        return;
+      }
+      onProgress?.(Math.round((video.currentTime / video.duration) * 100));
+    };
+
+    const handleCanPlay = () => {
+      setPhase("ready");
+      onStatus?.(`${item?.title || "Stream"} ist bereit.`);
+      if (autoplay) {
+        video.play().catch(() => {});
+      }
+    };
+
+    const handleWaiting = () => {
+      setPhase((current) => (current === "error" ? current : "buffering"));
+    };
+
+    const handlePlaying = () => setPhase("ready");
+    const handleError = () => fail("Das Video-Element konnte den Stream nicht abspielen.");
+
+    video.addEventListener("timeupdate", handleTimeUpdate);
+    video.addEventListener("canplay", handleCanPlay);
+    video.addEventListener("waiting", handleWaiting);
+    video.addEventListener("playing", handlePlaying);
+    video.addEventListener("error", handleError);
+
+    async function setupPlayback() {
+      if (isHls) {
+        const { default: Hls } = await import("hls.js");
+
+        if (cancelled) {
+          return;
+        }
+
+        if (Hls.isSupported()) {
+          const hls = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 90,
+          });
+          hls.loadSource(url);
+          hls.attachMedia(video);
+          hlsRef.current = hls;
+          hls.on(Hls.Events.ERROR, (_, data) => {
+            if (data?.fatal) {
+              fail("Der HLS-Stream konnte nicht geladen werden.");
+            }
+          });
+          return;
+        }
+
+        if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          video.src = url;
+          video.load();
+          return;
+        }
+
+        fail("Dieser Browser kann den HLS-Stream nicht direkt wiedergeben.");
+        return;
+      }
+
+      video.src = url;
+      video.load();
+    }
+
+    setupPlayback().catch(() => {
+      fail("Die Wiedergabe konnte nicht vorbereitet werden.");
+    });
+
+    return () => {
+      cancelled = true;
+      video.removeEventListener("timeupdate", handleTimeUpdate);
+      video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("waiting", handleWaiting);
+      video.removeEventListener("playing", handlePlaying);
+      video.removeEventListener("error", handleError);
+      cleanup();
+    };
+  }, [autoplay, isHls, item?.title, onProgress, onStatus, url]);
+
+  return (
+    <div className="playerShell">
+      <div className="playerMetaRow">
+        <span className="playerBadge">{connectionLabel || "Stream"}</span>
+        <span className="playerState">{PLAYER_LABELS[phase] || PLAYER_LABELS.idle}</span>
+      </div>
+      <div className="playerWrap">
+        <video ref={videoRef} controls playsInline preload="metadata" className="player" />
+      </div>
+      {error ? <div className="muted small">{error}</div> : null}
+    </div>
+  );
+}
+
+function LoginView({ onLogin }) {
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
+
+  return (
+    <div className="loginScreen">
+      <div className="loginCard">
+        <div className="badge">v3.9</div>
+        <h1>IPTV Mat Player</h1>
+        <p className="muted">
+          Smart Library, TV Guide, Serverprofile und Vercel-freundlicher Proxy in einer Version.
+        </p>
+        <input placeholder="Benutzername" value={user} onChange={(event) => setUser(event.target.value)} />
+        <input placeholder="Passwort" type="password" value={pass} onChange={(event) => setPass(event.target.value)} />
+        <button className="primary wide" onClick={() => user && pass && onLogin({ user, time: Date.now() })}>
+          Einloggen
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, hint }) {
+  return (
+    <div className="statCard">
+      <div className="small muted">{label}</div>
+      <div className="statValue">{value}</div>
+      <div className="small muted">{hint}</div>
+    </div>
+  );
+}
+
+function PosterCard({ item, onClick, compact, isFavorite, isRecent }) {
+  return (
+    <button className={`posterCard ${compact ? "posterCardCompact" : ""}`} onClick={onClick}>
+      <img src={item.cover} alt={item.title} />
+      <div className="posterBody">
+        <div className="posterHeader">
+          <span className="miniBadge">{item.badge}</span>
+          <span className="posterMeta">{item.category}</span>
+        </div>
+        <div className="posterTitle">{item.title}</div>
+        <div className="posterMeta">
+          {item.year} · {item.episodeTitle || item.duration}
+        </div>
+        <div className="posterFlags">
+          {isFavorite ? <span>Favorit</span> : null}
+          {isRecent ? <span>Zuletzt</span> : null}
+          {item.imported ? <span>Import</span> : <span>Demo</span>}
+        </div>
+        <div className="progressLine">
+          <div style={{ width: `${item.progress || 0}%` }} />
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function BottomNav({ page, setPage }) {
+  return (
+    <nav className="bottomNav">
+      {NAV_ITEMS.map(([key, label]) => (
+        <button key={key} className={page === key ? "navActive" : "navBtn"} onClick={() => setPage(key)}>
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+export default function AppV39() {
+  const [session, setSession] = useState(() => load("session", null));
+  const [profiles, setProfiles] = useState(() => load("profiles", DEFAULT_PROFILES_V39));
+  const [activeProfile, setActiveProfile] = useState(() => load("activeProfile", DEFAULT_PROFILES_V39[0].name));
+  const [settings, setSettings] = useState(readSettings);
+  const [items, setItems] = useState(() => load("items", DEMO_ITEMS_V39));
+  const [watchlist, setWatchlist] = useState(() => load("watchlist", ["movie-1"]));
+  const [recentIds, setRecentIds] = useState(() => load("recentIds", []));
+  const [selectedId, setSelectedId] = useState(() => load("selectedId", DEMO_ITEMS_V39[0].id));
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const [contentTab, setContentTab] = useState("live");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [status, setStatus] = useState("Bereit.");
+  const [auth, setAuth] = useState(() => readAuth(readSettings()));
+  const [savedServers, setSavedServers] = useState(() => load("savedServers", []));
+  const [newServerName, setNewServerName] = useState("");
+  const [importCount, setImportCount] = useState(() => load("importCount", 0));
+  const [lastImportAt, setLastImportAt] = useState(() => load("lastImportAt", ""));
+  const [newProfile, setNewProfile] = useState("");
+  const [page, setPage] = useState("home");
+  const [isResolvingSeries, setIsResolvingSeries] = useState(false);
+  const [categoryMaps, setCategoryMaps] = useState(() => load("categoryMaps", { live: {}, movie: {}, series: {} }));
+
+  const selected = items.find((item) => item.id === selectedId) || items[0] || null;
+  const playbackUrl = useMemo(() => resolvePlaybackUrl(selected, settings.connectionMode), [selected, settings.connectionMode]);
+  const isSelectedHls = useMemo(
+    () => Boolean(selected && (selected.streamExt === "m3u8" || String(selected.streamUrl || "").includes(".m3u8"))),
+    [selected]
+  );
+  const connectionLabel = useMemo(
+    () => describeConnectionMode(selected, settings.connectionMode),
+    [selected, settings.connectionMode]
+  );
+
+  const sectionItems = useMemo(
+    () => items.filter((item) => contentTab === "all" || item.section === contentTab),
+    [contentTab, items]
+  );
+
+  const categoryOptions = useMemo(() => getCategoryOptions(sectionItems), [sectionItems]);
+
+  useEffect(() => {
+    if (!categoryOptions.includes(categoryFilter)) {
+      setCategoryFilter("all");
+    }
+  }, [categoryFilter, categoryOptions]);
+
+  const filtered = useMemo(() => {
+    const query = deferredSearch.trim().toLowerCase();
+    const base = sectionItems.filter((item) => {
+      const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
+      const matchesAdultFilter = settings.adultFilter ? item.rating !== "16+" : true;
+      const matchesQuery =
+        !query ||
+        item.title.toLowerCase().includes(query) ||
+        item.category.toLowerCase().includes(query) ||
+        item.description.toLowerCase().includes(query);
+
+      return matchesCategory && matchesAdultFilter && matchesQuery;
+    });
+
+    return sortLibraryItems(base, settings.sortMode, recentIds);
+  }, [categoryFilter, deferredSearch, recentIds, sectionItems, settings.adultFilter, settings.sortMode]);
+
+  const liveItems = useMemo(() => items.filter((item) => item.section === "live"), [items]);
+  const movieItems = useMemo(() => items.filter((item) => item.section === "movie"), [items]);
+  const seriesItems = useMemo(() => items.filter((item) => item.section === "series"), [items]);
+  const importedItems = useMemo(() => items.filter((item) => item.imported), [items]);
+  const continueWatching = useMemo(
+    () =>
+      [...items]
+        .filter((item) => (item.progress || 0) > 0)
+        .sort((a, b) => (b.progress || 0) - (a.progress || 0))
+        .slice(0, 6),
+    [items]
+  );
+  const watchlistItems = useMemo(() => items.filter((item) => watchlist.includes(item.id)), [items, watchlist]);
+  const recentItems = useMemo(
+    () => recentIds.map((id) => items.find((item) => item.id === id)).filter(Boolean).slice(0, 8),
+    [items, recentIds]
+  );
+  const liveFavorites = watchlistItems.filter((item) => item.section === "live");
+  const movieFavorites = watchlistItems.filter((item) => item.section === "movie");
+  const seriesFavorites = watchlistItems.filter((item) => item.section === "series");
+  const guideRows = useMemo(
+    () => buildGuideRows(liveItems, settings.guideFocus, contentTab === "live" ? categoryFilter : "all"),
+    [categoryFilter, contentTab, liveItems, settings.guideFocus]
+  );
+  const securityNotes = useMemo(
+    () => createSecurityNotes(settings, savedServers),
+    [savedServers, settings]
+  );
+
+  function persistSettings(nextSettings) {
+    persistState("settings", nextSettings, setSettings);
+  }
+
+  function persistAuth(nextAuth) {
+    const storedAuth = {
+      server: nextAuth.server,
+      username: nextAuth.username,
+      password: settings.rememberCredentials ? nextAuth.password : "",
+    };
+    save("auth", storedAuth);
+    setAuth(nextAuth);
+  }
+
+  function touchRecent(id) {
+    const nextRecentIds = [id, ...recentIds.filter((entry) => entry !== id)].slice(0, 12);
+    persistState("recentIds", nextRecentIds, setRecentIds);
+  }
+
+  function toggleFavorite(id) {
+    const nextWatchlist = toggleEntry(watchlist, id);
+    persistState("watchlist", nextWatchlist, setWatchlist);
+  }
+
+  function handleProgress(percent) {
+    if (!settings.autosave || !selected || selected.section === "live") {
+      return;
+    }
+
+    const nextItems = items.map((item) =>
+      item.id === selected.id
+        ? { ...item, progress: Math.max(item.progress || 0, percent), lastWatchedAt: Date.now() }
+        : item
+    );
+
+    persistState("items", nextItems, setItems);
+  }
+
+  async function ensureSeriesEpisode(itemId) {
+    const item = items.find((entry) => entry.id === itemId);
+
+    if (!item || item.section !== "series" || item.streamId || !item.seriesId || isResolvingSeries) {
+      return;
+    }
+
+    setIsResolvingSeries(true);
+    setStatus("Erste Serien-Episode wird nachgeladen ...");
+
+    try {
+      const payload = await fetchXtreamJson({
+        server: item.server,
+        username: item.username,
+        password: item.password,
+        action: "get_series_info",
+        params: { series_id: item.seriesId },
+        mode: settings.connectionMode,
+      });
+      const episode = pickFirstSeriesEpisode(payload);
+
+      if (!episode) {
+        throw new Error("Keine Episode in den Serien-Daten gefunden.");
+      }
+
+      const nextItems = items.map((entry) =>
+        entry.id === itemId
+          ? {
+              ...entry,
+              streamId: episode.episodeId,
+              streamExt: episode.extension,
+              episodeTitle: episode.title,
+              duration: episode.title,
+              pendingEpisodeLookup: false,
+            }
+          : entry
+      );
+
+      startTransition(() => {
+        persistState("items", nextItems, setItems);
+      });
+      setStatus(`Serie bereit: ${episode.title}`);
+    } catch (error) {
+      setStatus(explainNetworkError(error, settings.connectionMode));
+    } finally {
+      setIsResolvingSeries(false);
+    }
+  }
+
+  async function openItem(item, nextPage = "details") {
+    persistState("selectedId", item.id, setSelectedId);
+    touchRecent(item.id);
+    setPage(nextPage);
+
+    if (item.section === "series" && item.imported && !item.streamId) {
+      await ensureSeriesEpisode(item.id);
+    }
+  }
+
+  async function handleImport() {
+    if (!auth.server || !auth.username || !auth.password) {
+      setStatus("Bitte Server, Benutzername und Passwort ausfuellen.");
+      return;
+    }
+
+    try {
+      setStatus("Xtream-Daten werden geladen ...");
+
+      const [live, vod, series, liveCategories, movieCategories, seriesCategories] = await Promise.all([
+        fetchXtreamJson({
+          server: auth.server,
+          username: auth.username,
+          password: auth.password,
+          action: "get_live_streams",
+          mode: settings.connectionMode,
+        }),
+        fetchXtreamJson({
+          server: auth.server,
+          username: auth.username,
+          password: auth.password,
+          action: "get_vod_streams",
+          mode: settings.connectionMode,
+        }),
+        fetchXtreamJson({
+          server: auth.server,
+          username: auth.username,
+          password: auth.password,
+          action: "get_series",
+          mode: settings.connectionMode,
+        }),
+        fetchXtreamJson({
+          server: auth.server,
+          username: auth.username,
+          password: auth.password,
+          action: CATEGORY_ACTIONS.live,
+          mode: settings.connectionMode,
+        }),
+        fetchXtreamJson({
+          server: auth.server,
+          username: auth.username,
+          password: auth.password,
+          action: CATEGORY_ACTIONS.movie,
+          mode: settings.connectionMode,
+        }),
+        fetchXtreamJson({
+          server: auth.server,
+          username: auth.username,
+          password: auth.password,
+          action: CATEGORY_ACTIONS.series,
+          mode: settings.connectionMode,
+        }),
+      ]);
+
+      const nextCategoryMaps = {
+        live: toCategoryMap(liveCategories),
+        movie: toCategoryMap(movieCategories),
+        series: toCategoryMap(seriesCategories),
+      };
+
+      const mapped = [
+        ...safeTop(live, 80).map((entry, index) =>
+          createImportedItem("live", entry, index, auth, nextCategoryMaps, DEMO_ITEMS_V39[0].cover)
+        ),
+        ...safeTop(vod, 80).map((entry, index) =>
+          createImportedItem("movie", entry, index, auth, nextCategoryMaps, DEMO_ITEMS_V39[2].cover)
+        ),
+        ...safeTop(series, 80).map((entry, index) =>
+          createImportedItem("series", entry, index, auth, nextCategoryMaps, DEMO_ITEMS_V39[4].cover)
+        ),
+      ];
+
+      if (!mapped.length) {
+        throw new Error("Keine Eintraege gefunden.");
+      }
+
+      const nextSelected =
+        mapped.find((entry) => entry.streamType === "live" || entry.streamType === "movie") || mapped[0];
+      const timestamp = new Date().toLocaleString("de-DE");
+
+      startTransition(() => {
+        persistState("categoryMaps", nextCategoryMaps, setCategoryMaps);
+        persistState("items", mapped, setItems);
+        persistState("selectedId", nextSelected.id, setSelectedId);
+        persistState("importCount", mapped.length, setImportCount);
+        persistState("lastImportAt", timestamp, setLastImportAt);
+      });
+
+      touchRecent(nextSelected.id);
+      setCategoryFilter("all");
+      setPage("home");
+      setStatus(`${mapped.length} Eintraege importiert. Smart Library und Guide wurden aktualisiert.`);
+    } catch (error) {
+      setStatus(explainNetworkError(error, settings.connectionMode));
+    }
+  }
+
+  function handleSaveServer() {
+    const trimmedName = newServerName.trim() || auth.server.trim();
+
+    if (!trimmedName || !auth.server || !auth.username) {
+      setStatus("Bitte Name, Server und Benutzername fuer ein Serverprofil angeben.");
+      return;
+    }
+
+    const nextServers = [
+      {
+        id: `server-${Date.now()}`,
+        name: trimmedName,
+        server: auth.server,
+        username: auth.username,
+        password: settings.savePasswords ? auth.password : "",
+        savedAt: new Date().toLocaleString("de-DE"),
+      },
+      ...savedServers,
+    ].slice(0, 8);
+
+    persistState("savedServers", nextServers, setSavedServers);
+    setNewServerName("");
+    setStatus(`Serverprofil gespeichert: ${trimmedName}`);
+  }
+
+  function applySavedServer(server) {
+    const nextAuth = {
+      server: server.server || "",
+      username: server.username || "",
+      password: server.password || "",
+    };
+    persistAuth(nextAuth);
+    setStatus(`Serverprofil geladen: ${server.name}`);
+  }
+
+  function removeSavedServer(serverId) {
+    const nextServers = savedServers.filter((server) => server.id !== serverId);
+    persistState("savedServers", nextServers, setSavedServers);
+  }
+
+  function addProfile() {
+    const name = newProfile.trim();
+
+    if (!name) {
+      return;
+    }
+
+    const nextProfiles = [...profiles, { id: `profile-${Date.now()}`, name, emoji: "New" }];
+    persistState("profiles", nextProfiles, setProfiles);
+    setNewProfile("");
+    setStatus(`Profil erstellt: ${name}`);
+  }
+
+  function resetDemo() {
+    persistState("items", DEMO_ITEMS_V39, setItems);
+    persistState("selectedId", DEMO_ITEMS_V39[0].id, setSelectedId);
+    persistState("importCount", 0, setImportCount);
+    persistState("lastImportAt", "", setLastImportAt);
+    persistState("categoryMaps", { live: {}, movie: {}, series: {} }, setCategoryMaps);
+    setStatus("Demo-Bibliothek geladen.");
+  }
+
+  function clearRememberedCredentials() {
+    remove("auth");
+    setAuth({ ...auth, password: "" });
+    setStatus("Lokal gespeicherte Zugangsdaten wurden entfernt.");
+  }
+
+  if (!session) {
+    return (
+      <LoginView
+        onLogin={(data) => {
+          save("session", data);
+          setSession(data);
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className={`app ${settings.compactMode ? "compactMode" : ""}`}>
+      <header className="topbar">
+        <div>
+          <div className="badge">v3.9</div>
+          <h1>IPTV Mat Player · {activeProfile}</h1>
+          <p className="muted">v3.6 Smart Library · v3.7 TV Guide · v3.8 Serverprofile · v3.9 UX & Sicherheit</p>
+        </div>
+        <button
+          className="secondary"
+          onClick={() => {
+            save("session", null);
+            setSession(null);
+          }}
+        >
+          Logout
+        </button>
+      </header>
+      {page === "home" ? (
+        <>
+          <section className="dashboardGrid">
+            <StatCard label="Live TV" value={liveItems.length} hint={`${getCategoryOptions(liveItems).length - 1} Kategorien`} />
+            <StatCard label="Filme" value={movieItems.length} hint={`${movieFavorites.length} Favoriten`} />
+            <StatCard label="Serien" value={seriesItems.length} hint={`${seriesFavorites.length} Favoriten`} />
+            <StatCard label="Importiert" value={importCount || importedItems.length} hint={lastImportAt || "noch kein Import"} />
+          </section>
+
+          <section className="hero">
+            <div className="heroLeft">
+              <div className="chips">
+                {["live", "movie", "series", "all"].map((tab) => (
+                  <button key={tab} className={`chip ${contentTab === tab ? "chipActive" : ""}`} onClick={() => setContentTab(tab)}>
+                    {tab === "movie" ? "Filme" : tab === "series" ? "Serien" : tab === "all" ? "Alle" : "Live"}
+                  </button>
+                ))}
+              </div>
+              <h2>{selected?.title || "Keine Auswahl"}</h2>
+              <p className="muted">{selected?.description || "Bitte Inhalt waehlen."}</p>
+              <div className="heroFacts">
+                <span>{connectionLabel}</span>
+                <span>{selected?.imported ? "Xtream-Quelle" : "Demo-Quelle"}</span>
+                <span>{selected?.episodeTitle || selected?.duration || "Bereit"}</span>
+              </div>
+              <div className="actions">
+                <button className="primary" onClick={() => selected && toggleFavorite(selected.id)}>
+                  {selected && watchlist.includes(selected.id) ? "Aus Favoriten" : "Zu Favoriten"}
+                </button>
+                {selected?.section === "series" && selected?.imported && !selected?.streamId ? (
+                  <button className="secondary" onClick={() => ensureSeriesEpisode(selected.id)}>
+                    Episode laden
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <PlayerView
+              item={selected}
+              url={playbackUrl}
+              isHls={isSelectedHls}
+              autoplay={settings.autoplay}
+              onProgress={handleProgress}
+              onStatus={setStatus}
+              connectionLabel={connectionLabel}
+            />
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Smart Library</h3>
+              <span className="muted">{filtered.length} Treffer</span>
+            </div>
+            <input
+              placeholder="Titel, Kategorie oder Beschreibung suchen ..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <div className="controlCluster">
+              <div className="chips">
+                {categoryOptions.map((option) => (
+                  <button
+                    key={option}
+                    className={`chip ${categoryFilter === option ? "chipActive" : ""}`}
+                    onClick={() => setCategoryFilter(option)}
+                  >
+                    {option === "all" ? "Alle Kategorien" : option}
+                  </button>
+                ))}
+              </div>
+              <div className="chips">
+                {[
+                  ["featured", "Featured"],
+                  ["az", "A-Z"],
+                  ["recent", "Zuletzt"],
+                  ["progress", "Fortschritt"],
+                ].map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    className={`chip ${settings.sortMode === mode ? "chipActive" : ""}`}
+                    onClick={() => persistSettings({ ...settings, sortMode: mode })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="posterGrid">
+              {filtered.map((item) => (
+                <PosterCard
+                  key={item.id}
+                  item={item}
+                  compact={settings.compactMode}
+                  isFavorite={watchlist.includes(item.id)}
+                  isRecent={recentIds.includes(item.id)}
+                  onClick={() => openItem(item)}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>TV Guide</h3>
+              <span className="muted">{guideRows.length} Kanaele</span>
+            </div>
+            <div className="chips">
+              {[
+                ["now", "Jetzt"],
+                ["prime", "Prime Time"],
+                ["late", "Spaet"],
+              ].map(([focus, label]) => (
+                <button
+                  key={focus}
+                  className={`chip ${settings.guideFocus === focus ? "chipActive" : ""}`}
+                  onClick={() => persistSettings({ ...settings, guideFocus: focus })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="guideList">
+              {guideRows.map((row) => (
+                <div key={row.id} className="guideRow">
+                  <div>
+                    <strong>{row.channel}</strong>
+                    <div className="small muted">{row.category}</div>
+                  </div>
+                  <div>
+                    <div className="guideProgram">
+                      <span>{row.currentTime}</span>
+                      <span>{row.currentTitle}</span>
+                    </div>
+                    <div className="guideProgram muted">
+                      <span>{row.nextTime}</span>
+                      <span>{row.nextTitle}</span>
+                    </div>
+                    <div className="progressLine">
+                      <div style={{ width: `${row.progress}%` }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      {page === "details" && selected ? (
+        <section className="card">
+          <div className="sectionHead">
+            <h3>Details</h3>
+            <span className="muted">{selected.category}</span>
+          </div>
+          <div className="detailsHero">
+            <img src={selected.cover} alt={selected.title} className="detailsImage" />
+            <div className="detailsBody">
+              <div className="chips">
+                <span className="chip chipActive">{selected.badge}</span>
+                <span className="chip">{selected.year}</span>
+                <span className="chip">{selected.episodeTitle || selected.duration}</span>
+                <span className="chip">{selected.rating}</span>
+              </div>
+              <h2>{selected.title}</h2>
+              <p className="muted">{selected.description}</p>
+              <div className="infoPanel">
+                <span>Quelle: {selected.imported ? "Xtream Import" : "Demo Bibliothek"}</span>
+                <span>Verbindungsmodus: {connectionLabel}</span>
+                <span>Fortschritt: {selected.progress || 0}%</span>
+              </div>
+              <div className="actions">
+                <button className="primary" onClick={() => toggleFavorite(selected.id)}>
+                  {watchlist.includes(selected.id) ? "Aus Favoriten" : "Zu Favoriten"}
+                </button>
+                {selected.section === "series" && selected.imported && !selected.streamId ? (
+                  <button className="secondary" onClick={() => ensureSeriesEpisode(selected.id)}>
+                    Episode laden
+                  </button>
+                ) : null}
+                <button className="secondary" onClick={() => setPage("home")}>
+                  Zurueck
+                </button>
+              </div>
+            </div>
+          </div>
+          <PlayerView
+            item={selected}
+            url={playbackUrl}
+            isHls={isSelectedHls}
+            autoplay={false}
+            onProgress={handleProgress}
+            onStatus={setStatus}
+            connectionLabel={connectionLabel}
+          />
+        </section>
+      ) : null}
+
+      {page === "watchlist" ? (
+        <>
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Weiter ansehen</h3>
+              <span className="muted">{continueWatching.length}</span>
+            </div>
+            <div className="posterGrid">
+              {continueWatching.map((item) => (
+                <PosterCard
+                  key={item.id}
+                  item={item}
+                  compact={settings.compactMode}
+                  isFavorite={watchlist.includes(item.id)}
+                  isRecent={recentIds.includes(item.id)}
+                  onClick={() => openItem(item)}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Zuletzt geoeffnet</h3>
+              <span className="muted">{recentItems.length}</span>
+            </div>
+            <div className="posterGrid">
+              {recentItems.map((item) => (
+                <PosterCard
+                  key={item.id}
+                  item={item}
+                  compact={settings.compactMode}
+                  isFavorite={watchlist.includes(item.id)}
+                  isRecent
+                  onClick={() => openItem(item)}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Favoriten nach Bereich</h3>
+              <span className="muted">{watchlistItems.length}</span>
+            </div>
+            <div className="favoritesColumns">
+              <div className="infoPanel">
+                <strong>Live</strong>
+                <span>{liveFavorites.length ? liveFavorites.map((item) => item.title).join(", ") : "Keine Live-Favoriten"}</span>
+              </div>
+              <div className="infoPanel">
+                <strong>Filme</strong>
+                <span>{movieFavorites.length ? movieFavorites.map((item) => item.title).join(", ") : "Keine Film-Favoriten"}</span>
+              </div>
+              <div className="infoPanel">
+                <strong>Serien</strong>
+                <span>{seriesFavorites.length ? seriesFavorites.map((item) => item.title).join(", ") : "Keine Serien-Favoriten"}</span>
+              </div>
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      {page === "account" ? (
+        <>
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Import Dashboard</h3>
+              <span className="muted">autorisierte Zugriffe</span>
+            </div>
+            <input
+              placeholder="Server-URL"
+              value={auth.server}
+              onChange={(event) => persistAuth({ ...auth, server: event.target.value })}
+            />
+            <input
+              placeholder="Benutzername"
+              value={auth.username}
+              onChange={(event) => persistAuth({ ...auth, username: event.target.value })}
+            />
+            <input
+              placeholder="Passwort"
+              type="password"
+              value={auth.password}
+              onChange={(event) => persistAuth({ ...auth, password: event.target.value })}
+            />
+            <div className="actions">
+              <button className="primary" onClick={handleImport}>
+                Xtream importieren
+              </button>
+              <button className="secondary" onClick={resetDemo}>
+                Demo laden
+              </button>
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Gespeicherte Server</h3>
+              <span className="muted">{savedServers.length} Profile</span>
+            </div>
+            <input
+              placeholder="Name fuer das Serverprofil"
+              value={newServerName}
+              onChange={(event) => setNewServerName(event.target.value)}
+            />
+            <div className="actions">
+              <button className="primary" onClick={handleSaveServer}>
+                Serverprofil speichern
+              </button>
+            </div>
+            <div className="savedServerList">
+              {savedServers.length ? (
+                savedServers.map((server) => (
+                  <div key={server.id} className="savedServerCard">
+                    <div>
+                      <strong>{server.name}</strong>
+                      <div className="small muted">{maskSensitiveValue(server.server, settings.privacyMode)}</div>
+                      <div className="small muted">
+                        User: {maskSensitiveValue(server.username, settings.privacyMode)} · Passwort: {server.password ? "gespeichert" : "leer"}
+                      </div>
+                    </div>
+                    <div className="actions">
+                      <button className="secondary" onClick={() => applySavedServer(server)}>
+                        Laden
+                      </button>
+                      <button className="secondary" onClick={() => removeSavedServer(server.id)}>
+                        Entfernen
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="infoPanel">
+                  <span>Noch keine Serverprofile gespeichert.</span>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Verbindung & Sicherheit</h3>
+              <span className="muted">{importedItems.length ? `${importedItems.length} importierte Eintraege` : "noch keine Live-Daten"}</span>
+            </div>
+            <div className="settingsRow">
+              {["auto", "proxy", "direct"].map((mode) => (
+                <button
+                  key={mode}
+                  className={`chip ${settings.connectionMode === mode ? "chipActive" : ""}`}
+                  onClick={() => persistSettings({ ...settings, connectionMode: mode })}
+                >
+                  {mode === "auto" ? "Auto" : mode === "proxy" ? "Proxy" : "Direkt"}
+                </button>
+              ))}
+            </div>
+            <div className="settingsRow">
+              <button
+                className={`chip ${settings.privacyMode ? "chipActive" : ""}`}
+                onClick={() => persistSettings({ ...settings, privacyMode: !settings.privacyMode })}
+              >
+                Privacy Mode
+              </button>
+              <button
+                className={`chip ${settings.savePasswords ? "chipActive" : ""}`}
+                onClick={() => persistSettings({ ...settings, savePasswords: !settings.savePasswords })}
+              >
+                Passwoerter speichern
+              </button>
+              <button
+                className={`chip ${settings.rememberCredentials ? "chipActive" : ""}`}
+                onClick={() => {
+                  const next = { ...settings, rememberCredentials: !settings.rememberCredentials };
+                  persistSettings(next);
+                  if (!next.rememberCredentials) {
+                    clearRememberedCredentials();
+                  }
+                }}
+              >
+                Zugang merken
+              </button>
+            </div>
+            <div className="infoPanel">
+              {securityNotes.map((note, index) => (
+                <span key={index}>{note}</span>
+              ))}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Profile & App Settings</h3>
+              <span className="muted">{session.user}</span>
+            </div>
+            <div className="settingsRow">
+              <button
+                className={`chip ${settings.autoplay ? "chipActive" : ""}`}
+                onClick={() => persistSettings({ ...settings, autoplay: !settings.autoplay })}
+              >
+                Trailer-Autoplay
+              </button>
+              <button
+                className={`chip ${settings.autosave ? "chipActive" : ""}`}
+                onClick={() => persistSettings({ ...settings, autosave: !settings.autosave })}
+              >
+                Auto-Fortschritt
+              </button>
+              <button
+                className={`chip ${settings.compactMode ? "chipActive" : ""}`}
+                onClick={() => persistSettings({ ...settings, compactMode: !settings.compactMode })}
+              >
+                Compact Mode
+              </button>
+              <button
+                className={`chip ${settings.adultFilter ? "chipActive" : ""}`}
+                onClick={() => persistSettings({ ...settings, adultFilter: !settings.adultFilter })}
+              >
+                16+ ausblenden
+              </button>
+            </div>
+            <div className="profileRow">
+              {profiles.map((profile) => (
+                <button
+                  key={profile.id}
+                  className={`chip ${activeProfile === profile.name ? "chipActive" : ""}`}
+                  onClick={() => persistState("activeProfile", profile.name, setActiveProfile)}
+                >
+                  {profile.emoji} {profile.name}
+                </button>
+              ))}
+            </div>
+            <div className="profileCreate">
+              <input placeholder="Neues Profil" value={newProfile} onChange={(event) => setNewProfile(event.target.value)} />
+              <button className="primary" onClick={addProfile}>
+                Profil anlegen
+              </button>
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Status</h3>
+              <span className="muted">{isResolvingSeries ? "Serie wird vorbereitet" : "Live"}</span>
+            </div>
+            <div className="infoPanel">
+              <span>{status}</span>
+              <span>{lastImportAt ? `Letzter Import: ${lastImportAt}` : "Noch kein Import ausgefuehrt."}</span>
+              <span>
+                Kategorien geladen: {Object.values(categoryMaps.live || {}).length + Object.values(categoryMaps.movie || {}).length + Object.values(categoryMaps.series || {}).length}
+              </span>
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      <BottomNav page={page} setPage={setPage} />
+    </div>
+  );
+}

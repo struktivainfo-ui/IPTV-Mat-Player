@@ -388,6 +388,26 @@ input::placeholder {
   border-color: rgba(247, 219, 136, 0.5);
 }
 
+.errorPanel,
+.modalCard {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 140, 140, 0.32);
+  background: rgba(120, 18, 18, 0.24);
+}
+
+.modalCard {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, calc(100% - 28px));
+  z-index: 40;
+  backdrop-filter: blur(18px);
+}
+
 .guideRow,
 .infoPanel,
 .savedServerCard {
@@ -417,7 +437,7 @@ input::placeholder {
 
 .profileCreate {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr 1fr auto;
   gap: 10px;
   align-items: center;
 }

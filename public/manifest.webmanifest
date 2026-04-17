@@ -1,0 +1,24 @@
+{
+  "name": "IPTV Mat Player",
+  "short_name": "IPTV Mat",
+  "description": "Installierbarer IPTV Player mit EPG, DVR-Planer, PIN-Profilen und TV-Modus.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07111d",
+  "theme_color": "#07111d",
+  "lang": "de",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

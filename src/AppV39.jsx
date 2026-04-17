@@ -61,7 +61,8 @@ const SOURCE_LABELS = {
   demo: "Demo",
 };
 
-const APP_VERSION = "v4.3";
+const APP_VERSION = "v4.7";
+const PLAYER_RETRY_LIMIT = 2;
 const STB_STREAM_CACHE_MS = 5 * 60 * 1000;
 
 function persistState(key, value, setter) {
@@ -113,6 +114,36 @@ function getFallbackCover(item) {
   }
 
   return DEMO_ITEMS_V39[0].cover;
+}
+
+function normalizeProfile(profile, index = 0) {
+  const name = profile?.name || `Profil ${index + 1}`;
+  return {
+    id: profile?.id || `profile-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${index}`,
+    name,
+    emoji: profile?.emoji || "User",
+    pin: profile?.pin || "",
+    kidsMode: Boolean(profile?.kidsMode || name.toLowerCase() === "kids"),
+  };
+}
+
+function normalizeProfiles(profiles) {
+  return (Array.isArray(profiles) ? profiles : DEFAULT_PROFILES_V39).map(normalizeProfile);
+}
+
+function normalizeBouquets(bouquets) {
+  const source = Array.isArray(bouquets) && bouquets.length ? bouquets : [{ id: "bouquet-main", name: "Meine Sender", itemIds: [] }];
+  return source.map((bouquet, index) => ({
+    id: bouquet?.id || `bouquet-${index + 1}`,
+    name: bouquet?.name || `Bouquet ${index + 1}`,
+    itemIds: Array.isArray(bouquet?.itemIds) ? bouquet.itemIds : [],
+  }));
+}
+
+function buildQualityLabel(level, index) {
+  const height = level?.height ? `${level.height}p` : "";
+  const bitrate = level?.bitrate ? `${Math.round(level.bitrate / 1000)} kbps` : "";
+  return [height, bitrate].filter(Boolean).join(" | ") || `Qualitaet ${index + 1}`;
 }
 
 function toCategoryMap(entries) {
@@ -204,13 +235,32 @@ function createImportedItem(kind, entry, index, auth, categoryMaps, fallbackCove
   };
 }
 
-function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connectionLabel, isPreparing = false }) {
+function PlayerView({
+  item,
+  url,
+  isHls,
+  autoplay,
+  onProgress,
+  onStatus,
+  connectionLabel,
+  isPreparing = false,
+  retryEnabled = false,
+  qualityLevel = -1,
+  onQualitiesChange,
+  onPlaybackIssue,
+  videoBridgeRef,
+}) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef(null);
   const onProgressRef = useRef(onProgress);
   const onStatusRef = useRef(onStatus);
+  const onPlaybackIssueRef = useRef(onPlaybackIssue);
+  const onQualitiesChangeRef = useRef(onQualitiesChange);
   const [phase, setPhase] = useState(url ? "loading" : "idle");
   const [error, setError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     onProgressRef.current = onProgress;
@@ -221,6 +271,27 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
   }, [onStatus]);
 
   useEffect(() => {
+    onPlaybackIssueRef.current = onPlaybackIssue;
+  }, [onPlaybackIssue]);
+
+  useEffect(() => {
+    onQualitiesChangeRef.current = onQualitiesChange;
+  }, [onQualitiesChange]);
+
+  useEffect(() => {
+    if (videoBridgeRef) {
+      videoBridgeRef.current = videoRef.current;
+    }
+  }, [videoBridgeRef]);
+
+  useEffect(() => {
+    if (hlsRef.current) {
+      hlsRef.current.currentLevel = qualityLevel;
+      hlsRef.current.nextLevel = qualityLevel;
+    }
+  }, [qualityLevel]);
+
+  useEffect(() => {
     const video = videoRef.current;
     let cancelled = false;
 
@@ -229,6 +300,10 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
     }
 
     const cleanup = () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -243,21 +318,36 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
       if (isPreparing) {
         setPhase("loading");
         setError("");
+        onPlaybackIssueRef.current?.("");
         return cleanup;
       }
 
       setPhase("idle");
       setError("Fuer diesen Eintrag ist noch kein abspielbarer Stream verfuegbar.");
+      onPlaybackIssueRef.current?.("Fuer diesen Eintrag ist noch kein abspielbarer Stream verfuegbar.");
       return cleanup;
     }
 
     setError("");
     setPhase("loading");
+    onPlaybackIssueRef.current?.("");
     onStatusRef.current?.(`${item?.title || "Stream"} wird vorbereitet ...`);
 
     const fail = (message) => {
+      if (retryEnabled && retryCountRef.current < PLAYER_RETRY_LIMIT) {
+        retryCountRef.current += 1;
+        setPhase("buffering");
+        setError(`Stream wird erneut verbunden (${retryCountRef.current}/${PLAYER_RETRY_LIMIT}) ...`);
+        onPlaybackIssueRef.current?.(`Automatischer Wiederholungsversuch ${retryCountRef.current}/${PLAYER_RETRY_LIMIT}`);
+        retryTimerRef.current = setTimeout(() => {
+          setReloadToken((value) => value + 1);
+        }, 1200 * retryCountRef.current);
+        return;
+      }
+
       setError(message);
       setPhase("error");
+      onPlaybackIssueRef.current?.(message);
       onStatusRef.current?.(message);
     };
 
@@ -269,7 +359,9 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
     };
 
     const handleCanPlay = () => {
+      retryCountRef.current = 0;
       setPhase("ready");
+      onPlaybackIssueRef.current?.("");
       onStatusRef.current?.(`${item?.title || "Stream"} ist bereit.`);
       if (autoplay) {
         video.play().catch(() => {});
@@ -280,7 +372,11 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
       setPhase((current) => (current === "error" ? current : "buffering"));
     };
 
-    const handlePlaying = () => setPhase("ready");
+    const handlePlaying = () => {
+      retryCountRef.current = 0;
+      setPhase("ready");
+      onPlaybackIssueRef.current?.("");
+    };
     const handleError = () => fail("Das Video-Element konnte den Stream nicht abspielen.");
 
     video.addEventListener("timeupdate", handleTimeUpdate);
@@ -306,6 +402,17 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
           hls.loadSource(url);
           hls.attachMedia(video);
           hlsRef.current = hls;
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            const options = [
+              { value: -1, label: "Auto" },
+              ...hls.levels.map((level, index) => ({
+                value: index,
+                label: buildQualityLabel(level, index),
+              })),
+            ];
+            onQualitiesChangeRef.current?.(options);
+            hls.currentLevel = qualityLevel;
+          });
           hls.on(Hls.Events.ERROR, (_, data) => {
             if (data?.fatal) {
               fail("Der HLS-Stream konnte nicht geladen werden.");
@@ -315,15 +422,18 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
         }
 
         if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          onQualitiesChangeRef.current?.([{ value: -1, label: "Auto" }]);
           video.src = url;
           video.load();
           return;
         }
 
+        onQualitiesChangeRef.current?.([]);
         fail("Dieser Browser kann den HLS-Stream nicht direkt wiedergeben.");
         return;
       }
 
+      onQualitiesChangeRef.current?.([]);
       video.src = url;
       video.load();
     }
@@ -341,7 +451,7 @@ function PlayerView({ item, url, isHls, autoplay, onProgress, onStatus, connecti
       video.removeEventListener("error", handleError);
       cleanup();
     };
-  }, [autoplay, isHls, isPreparing, item?.title, url]);
+  }, [autoplay, isHls, isPreparing, item?.title, reloadToken, retryEnabled, url]);
 
   return (
     <div className="playerShell">
@@ -367,7 +477,7 @@ function LoginView({ onLogin }) {
         <div className="badge">{APP_VERSION}</div>
         <h1>IPTV Mat Player</h1>
         <p className="muted">
-          Live EPG, Fast Zapping, Quellen-Manager und app-artige TV-Oberflaeche in einer Version.
+          Device-Upgrade, DVR-Planer, PIN-Profile und installierbare TV-App in einer Version.
         </p>
         <input placeholder="Benutzername" value={user} onChange={(event) => setUser(event.target.value)} />
         <input placeholder="Passwort" type="password" value={pass} onChange={(event) => setPass(event.target.value)} />
@@ -429,25 +539,39 @@ function BottomNav({ page, setPage }) {
 
 export default function AppV39() {
   const autoGuideSignatureRef = useRef("");
+  const videoElementRef = useRef(null);
   const [session, setSession] = useState(() => load("session", null));
-  const [profiles, setProfiles] = useState(() => load("profiles", DEFAULT_PROFILES_V39));
+  const [profiles, setProfiles] = useState(() => normalizeProfiles(load("profiles", DEFAULT_PROFILES_V39)));
   const [activeProfile, setActiveProfile] = useState(() => load("activeProfile", DEFAULT_PROFILES_V39[0].name));
   const [settings, setSettings] = useState(readSettings);
   const [items, setItems] = useState(() => load("items", DEMO_ITEMS_V39));
   const [watchlist, setWatchlist] = useState(() => load("watchlist", ["movie-1"]));
+  const [bouquets, setBouquets] = useState(() => normalizeBouquets(load("bouquets", [])));
+  const [activeBouquetId, setActiveBouquetId] = useState(() => load("activeBouquetId", "bouquet-main"));
+  const [newBouquetName, setNewBouquetName] = useState("");
   const [recentIds, setRecentIds] = useState(() => load("recentIds", []));
+  const [channelHistory, setChannelHistory] = useState(() => load("channelHistory", []));
   const [selectedId, setSelectedId] = useState(() => load("selectedId", DEMO_ITEMS_V39[0].id));
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [contentTab, setContentTab] = useState("live");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [status, setStatus] = useState("Bereit.");
+  const [playerError, setPlayerError] = useState("");
+  const [qualityOptions, setQualityOptions] = useState([{ value: -1, label: "Auto" }]);
+  const [selectedQuality, setSelectedQuality] = useState(-1);
   const [auth, setAuth] = useState(() => readAuth(readSettings()));
   const [savedServers, setSavedServers] = useState(() => load("savedServers", []));
   const [newServerName, setNewServerName] = useState("");
   const [importCount, setImportCount] = useState(() => load("importCount", 0));
   const [lastImportAt, setLastImportAt] = useState(() => load("lastImportAt", ""));
   const [newProfile, setNewProfile] = useState("");
+  const [newProfilePin, setNewProfilePin] = useState("");
+  const [pinPrompt, setPinPrompt] = useState(null);
+  const [pinInput, setPinInput] = useState("");
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  const [isInstalled, setIsInstalled] = useState(false);
   const [page, setPage] = useState("home");
   const [isResolvingSeries, setIsResolvingSeries] = useState(false);
   const [isPreparingPlayback, setIsPreparingPlayback] = useState(true);
@@ -455,8 +579,13 @@ export default function AppV39() {
   const [categoryMaps, setCategoryMaps] = useState(() => load("categoryMaps", { live: {}, movie: {}, series: {} }));
   const [guideDataById, setGuideDataById] = useState(() => load("guideDataById", {}));
   const [lastGuideSyncAt, setLastGuideSyncAt] = useState(() => load("lastGuideSyncAt", ""));
+  const [recordings, setRecordings] = useState(() => load("recordings", []));
 
   const selected = items.find((item) => item.id === selectedId) || items[0] || null;
+  const currentProfile = useMemo(
+    () => normalizeProfiles(profiles).find((profile) => profile.name === activeProfile) || normalizeProfiles(profiles)[0],
+    [activeProfile, profiles]
+  );
   const selectedSourceLabel = useMemo(
     () => getSourceLabel(selected?.sourceType, selected?.imported),
     [selected?.imported, selected?.sourceType]
@@ -480,6 +609,10 @@ export default function AppV39() {
     () => items.filter((item) => contentTab === "all" || item.section === contentTab),
     [contentTab, items]
   );
+  const activeBouquet = useMemo(
+    () => bouquets.find((bouquet) => bouquet.id === activeBouquetId) || bouquets[0] || null,
+    [activeBouquetId, bouquets]
+  );
 
   const categoryOptions = useMemo(() => getCategoryOptions(sectionItems), [sectionItems]);
 
@@ -494,17 +627,20 @@ export default function AppV39() {
     const base = sectionItems.filter((item) => {
       const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
       const matchesAdultFilter = settings.adultFilter ? item.rating !== "16+" : true;
+      const matchesKidsMode = currentProfile?.kidsMode ? !["16+", "18+"].includes(item.rating) : true;
+      const matchesBouquet =
+        contentTab !== "live" || !activeBouquet || !activeBouquet.itemIds.length || activeBouquet.itemIds.includes(item.id);
       const matchesQuery =
         !query ||
         item.title.toLowerCase().includes(query) ||
         item.category.toLowerCase().includes(query) ||
         item.description.toLowerCase().includes(query);
 
-      return matchesCategory && matchesAdultFilter && matchesQuery;
+      return matchesCategory && matchesAdultFilter && matchesKidsMode && matchesBouquet && matchesQuery;
     });
 
     return sortLibraryItems(base, settings.sortMode, recentIds);
-  }, [categoryFilter, deferredSearch, recentIds, sectionItems, settings.adultFilter, settings.sortMode]);
+  }, [activeBouquet, categoryFilter, contentTab, currentProfile, deferredSearch, recentIds, sectionItems, settings.adultFilter, settings.sortMode]);
 
   const liveItems = useMemo(() => items.filter((item) => item.section === "live"), [items]);
   const movieItems = useMemo(() => items.filter((item) => item.section === "movie"), [items]);
@@ -523,9 +659,17 @@ export default function AppV39() {
     () => recentIds.map((id) => items.find((item) => item.id === id)).filter(Boolean).slice(0, 8),
     [items, recentIds]
   );
+  const channelHistoryItems = useMemo(
+    () => channelHistory.map((id) => items.find((item) => item.id === id)).filter(Boolean).slice(0, 8),
+    [channelHistory, items]
+  );
   const liveFavorites = watchlistItems.filter((item) => item.section === "live");
   const movieFavorites = watchlistItems.filter((item) => item.section === "movie");
   const seriesFavorites = watchlistItems.filter((item) => item.section === "series");
+  const bouquetItems = useMemo(
+    () => (activeBouquet?.itemIds || []).map((id) => items.find((item) => item.id === id)).filter(Boolean),
+    [activeBouquet, items]
+  );
   const guideRows = useMemo(
     () => buildGuideRows(liveItems, settings.guideFocus, contentTab === "live" ? categoryFilter : "all", guideDataById),
     [categoryFilter, contentTab, guideDataById, liveItems, settings.guideFocus]
@@ -564,6 +708,103 @@ export default function AppV39() {
   function toggleFavorite(id) {
     const nextWatchlist = toggleEntry(watchlist, id);
     persistState("watchlist", nextWatchlist, setWatchlist);
+  }
+
+  function toggleBouquetItem(bouquetId, itemId) {
+    const nextBouquets = bouquets.map((bouquet) =>
+      bouquet.id === bouquetId
+        ? { ...bouquet, itemIds: toggleEntry(bouquet.itemIds, itemId) }
+        : bouquet
+    );
+    persistState("bouquets", nextBouquets, setBouquets);
+  }
+
+  function addBouquet() {
+    const name = newBouquetName.trim();
+
+    if (!name) {
+      return;
+    }
+
+    const nextBouquet = {
+      id: `bouquet-${Date.now()}`,
+      name,
+      itemIds: selected?.section === "live" ? [selected.id] : [],
+    };
+    const nextBouquets = [...bouquets, nextBouquet];
+    persistState("bouquets", nextBouquets, setBouquets);
+    persistState("activeBouquetId", nextBouquet.id, setActiveBouquetId);
+    setNewBouquetName("");
+    setStatus(`Bouquet erstellt: ${name}`);
+  }
+
+  function removeBouquet(bouquetId) {
+    const nextBouquets = bouquets.filter((bouquet) => bouquet.id !== bouquetId);
+    persistState("bouquets", nextBouquets, setBouquets);
+    const fallbackId = nextBouquets[0]?.id || "bouquet-main";
+    persistState("activeBouquetId", fallbackId, setActiveBouquetId);
+  }
+
+  function updateProfiles(nextProfiles, nextStatus = "") {
+    const normalized = normalizeProfiles(nextProfiles);
+    persistState("profiles", normalized, setProfiles);
+    if (nextStatus) {
+      setStatus(nextStatus);
+    }
+  }
+
+  function updateActiveProfilePatch(patch) {
+    const nextProfiles = profiles.map((profile) =>
+      profile.name === currentProfile?.name ? normalizeProfile({ ...profile, ...patch }) : profile
+    );
+    updateProfiles(nextProfiles, `Profil aktualisiert: ${currentProfile?.name}`);
+  }
+
+  function activateProfile(profileName) {
+    persistState("activeProfile", profileName, setActiveProfile);
+    setPinPrompt(null);
+    setPinInput("");
+    const profile = normalizeProfiles(profiles).find((entry) => entry.name === profileName);
+    if (profile?.kidsMode) {
+      persistSettings({ ...settings, adultFilter: true });
+    }
+    setStatus(`Profil aktiv: ${profileName}`);
+  }
+
+  function requestProfileChange(profile) {
+    if (profile.name === activeProfile) {
+      return;
+    }
+
+    if (profile.pin) {
+      setPinPrompt(profile);
+      setPinInput("");
+      return;
+    }
+
+    activateProfile(profile.name);
+  }
+
+  function confirmProfilePin() {
+    if (!pinPrompt) {
+      return;
+    }
+
+    if (pinInput === pinPrompt.pin) {
+      activateProfile(pinPrompt.name);
+      return;
+    }
+
+    setStatus("PIN falsch. Bitte erneut pruefen.");
+  }
+
+  function trackChannelHistory(item) {
+    if (!item || item.section !== "live") {
+      return;
+    }
+
+    const nextHistory = [item.id, ...channelHistory.filter((entry) => entry !== item.id)].slice(0, 10);
+    persistState("channelHistory", nextHistory, setChannelHistory);
   }
 
   function requireAuthFields() {
@@ -811,8 +1052,12 @@ export default function AppV39() {
   async function openItem(item, nextPage = "details") {
     persistState("selectedId", item.id, setSelectedId);
     touchRecent(item.id);
+    trackChannelHistory(item);
     setPage(nextPage);
     setIsPreparingPlayback(true);
+    setPlayerError("");
+    setSelectedQuality(-1);
+    setQualityOptions([{ value: -1, label: "Auto" }]);
     setResolvedPlaybackUrl("");
 
     if (item.section === "series" && item.imported && item.sourceType === "xtream" && !item.streamId) {
@@ -832,6 +1077,80 @@ export default function AppV39() {
     if (nextItem) {
       openItem(nextItem, page === "details" ? "details" : "home").catch(() => {});
     }
+  }
+
+  function requestFullscreen() {
+    const target = videoElementRef.current;
+
+    if (target?.requestFullscreen) {
+      target.requestFullscreen().catch(() => {
+        setStatus("Vollbild konnte nicht gestartet werden.");
+      });
+    }
+  }
+
+  async function installApp() {
+    if (!installPromptEvent) {
+      setStatus("Die Installation ist auf diesem Geraet aktuell nicht verfuegbar.");
+      return;
+    }
+
+    await installPromptEvent.prompt();
+    const choice = await installPromptEvent.userChoice;
+
+    if (choice?.outcome === "accepted") {
+      setIsInstalled(true);
+      setInstallPromptEvent(null);
+      setStatus("App-Installation gestartet.");
+    }
+  }
+
+  function seekTimeshift(offsetSeconds) {
+    const target = videoElementRef.current;
+
+    if (!target || !Number.isFinite(target.currentTime)) {
+      return;
+    }
+
+    const nextTime = Math.max(0, target.currentTime + offsetSeconds);
+    target.currentTime = nextTime;
+  }
+
+  function jumpToLiveEdge() {
+    const target = videoElementRef.current;
+    const seekable = target?.seekable;
+
+    if (!target || !seekable || !seekable.length) {
+      return;
+    }
+
+    target.currentTime = seekable.end(seekable.length - 1) - 0.5;
+  }
+
+  function scheduleRecording(item = selected) {
+    if (!item) {
+      return;
+    }
+
+    const minutes = Number(settings.preferredRecordingMinutes || 60);
+    const now = Date.now();
+    const nextRecording = {
+      id: `recording-${now}`,
+      itemId: item.id,
+      title: item.title,
+      sourceType: item.sourceType || "demo",
+      startsAt: new Date(now).toLocaleString("de-DE"),
+      durationMinutes: minutes,
+      status: "geplant",
+    };
+    const nextRecordings = [nextRecording, ...recordings].slice(0, 20);
+    persistState("recordings", nextRecordings, setRecordings);
+    setStatus(`Aufnahme vorgemerkt: ${item.title} fuer ${minutes} Minuten.`);
+  }
+
+  function removeRecording(recordingId) {
+    const nextRecordings = recordings.filter((entry) => entry.id !== recordingId);
+    persistState("recordings", nextRecordings, setRecordings);
   }
 
   async function resolveStbStream(item) {
@@ -993,6 +1312,48 @@ export default function AppV39() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [liveItems, page, selected]);
+
+  useEffect(() => {
+    if (!currentProfile?.kidsMode || !selected || !["16+", "18+"].includes(selected.rating)) {
+      return;
+    }
+
+    const safeItem = items.find((item) => !["16+", "18+"].includes(item.rating)) || DEMO_ITEMS_V39[0];
+    if (safeItem && safeItem.id !== selected.id) {
+      openItem(safeItem, page).catch(() => {});
+      setStatus("Kids-Schutz aktiv. Nicht jugendfreie Inhalte wurden ausgeblendet.");
+    }
+  }, [currentProfile, items, page, selected]);
+
+  useEffect(() => {
+    function handleBeforeInstallPrompt(event) {
+      event.preventDefault();
+      setInstallPromptEvent(event);
+    }
+
+    function handleOnline() {
+      setIsOnline(true);
+    }
+
+    function handleOffline() {
+      setIsOnline(false);
+    }
+
+    const isStandalone =
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      window.navigator?.standalone === true;
+    setIsInstalled(Boolean(isStandalone));
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   async function handleImport() {
     const validationMessage = requireAuthFields();
@@ -1185,9 +1546,19 @@ export default function AppV39() {
       return;
     }
 
-    const nextProfiles = [...profiles, { id: `profile-${Date.now()}`, name, emoji: "New" }];
+    const nextProfiles = [
+      ...profiles,
+      normalizeProfile({
+        id: `profile-${Date.now()}`,
+        name,
+        emoji: "New",
+        pin: newProfilePin.trim(),
+        kidsMode: false,
+      }),
+    ];
     persistState("profiles", nextProfiles, setProfiles);
     setNewProfile("");
+    setNewProfilePin("");
     setStatus(`Profil erstellt: ${name}`);
   }
 
@@ -1227,13 +1598,15 @@ export default function AppV39() {
         <div>
           <div className="badge">{APP_VERSION}</div>
           <h1>IPTV Mat Player | {activeProfile}</h1>
-          <p className="muted">v4.0 Live EPG | v4.1 Fast Zapping | v4.2 Quellen-Manager | v4.3 App Shell</p>
+          <p className="muted">v4.4 Device Upgrade | v4.5 DVR Prep | v4.6 PIN & Kids | v4.7 PWA App</p>
           <div className="workspaceMeta">
             <span>{connectionLabel}</span>
             <span>{importedItems.length ? `${importedItems.length} Import-Streams` : "Demo-Bibliothek aktiv"}</span>
             <span>{savedServers.length} Serverprofile</span>
             <span>{selectedSourceLabel} aktiv</span>
             <span>{lastGuideSyncAt ? `Guide ${lastGuideSyncAt}` : "Guide bereit zum Sync"}</span>
+            <span>{isOnline ? "Online" : "Offline"}</span>
+            <span>{isInstalled ? "Installiert" : installPromptEvent ? "Installierbar" : "Browser-App"}</span>
           </div>
         </div>
         <button
@@ -1312,6 +1685,11 @@ export default function AppV39() {
               onStatus={setStatus}
               connectionLabel={connectionLabel}
               isPreparing={isPreparingPlayback}
+              retryEnabled={settings.retryPlayback}
+              qualityLevel={selectedQuality}
+              onQualitiesChange={setQualityOptions}
+              onPlaybackIssue={setPlayerError}
+              videoBridgeRef={videoElementRef}
             />
           </section>
 
@@ -1335,6 +1713,51 @@ export default function AppV39() {
               </div>
             </section>
           ) : null}
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Player Control</h3>
+              <span className="muted">{qualityOptions.length > 1 ? "Mehrere Qualitaeten erkannt" : "Standard-Stream"}</span>
+            </div>
+            {playerError ? (
+              <div className="errorPanel">
+                <strong>Playback-Hinweis</strong>
+                <span>{playerError}</span>
+              </div>
+            ) : null}
+            <div className="actions">
+              <button className="secondary" onClick={requestFullscreen}>
+                Vollbild
+              </button>
+              <button className="secondary" onClick={() => scheduleRecording()}>
+                Aufnahme planen
+              </button>
+              {selected?.section === "live" ? (
+                <>
+                  <button className="secondary" onClick={() => seekTimeshift(-Number(settings.timeshiftStepSeconds || 30))}>
+                    -{settings.timeshiftStepSeconds || 30}s
+                  </button>
+                  <button className="secondary" onClick={jumpToLiveEdge}>
+                    Live
+                  </button>
+                  <button className="secondary" onClick={() => seekTimeshift(Number(settings.timeshiftStepSeconds || 30))}>
+                    +{settings.timeshiftStepSeconds || 30}s
+                  </button>
+                </>
+              ) : null}
+            </div>
+            <div className="chips">
+              {qualityOptions.map((option) => (
+                <button
+                  key={option.value}
+                  className={`chip ${selectedQuality === option.value ? "chipActive" : ""}`}
+                  onClick={() => setSelectedQuality(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </section>
 
           <section className="card">
             <div className="sectionHead">
@@ -1501,6 +1924,11 @@ export default function AppV39() {
             onStatus={setStatus}
             connectionLabel={connectionLabel}
             isPreparing={isPreparingPlayback}
+            retryEnabled={settings.retryPlayback}
+            qualityLevel={selectedQuality}
+            onQualitiesChange={setQualityOptions}
+            onPlaybackIssue={setPlayerError}
+            videoBridgeRef={videoElementRef}
           />
         </section>
       ) : null}
@@ -1542,6 +1970,100 @@ export default function AppV39() {
                   onClick={() => openItem(item)}
                 />
               ))}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Channel History</h3>
+              <span className="muted">{channelHistoryItems.length}</span>
+            </div>
+            <div className="posterGrid">
+              {channelHistoryItems.map((item) => (
+                <PosterCard
+                  key={item.id}
+                  item={item}
+                  compact={settings.compactMode}
+                  isFavorite={watchlist.includes(item.id)}
+                  isRecent={recentIds.includes(item.id)}
+                  onClick={() => openItem(item)}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Bouquets</h3>
+              <span className="muted">{bouquets.length}</span>
+            </div>
+            <div className="chips">
+              {bouquets.map((bouquet) => (
+                <button
+                  key={bouquet.id}
+                  className={`chip ${activeBouquetId === bouquet.id ? "chipActive" : ""}`}
+                  onClick={() => persistState("activeBouquetId", bouquet.id, setActiveBouquetId)}
+                >
+                  {bouquet.name}
+                </button>
+              ))}
+            </div>
+            <div className="profileCreate">
+              <input placeholder="Neues Bouquet" value={newBouquetName} onChange={(event) => setNewBouquetName(event.target.value)} />
+              <button className="primary" onClick={addBouquet}>
+                Bouquet anlegen
+              </button>
+            </div>
+            {activeBouquet ? (
+              <div className="infoPanel">
+                <span>{activeBouquet.name}: {bouquetItems.length ? bouquetItems.map((item) => item.title).join(", ") : "noch leer"}</span>
+                <div className="actions">
+                  {selected?.section === "live" ? (
+                    <button className="secondary" onClick={() => toggleBouquetItem(activeBouquet.id, selected.id)}>
+                      {activeBouquet.itemIds.includes(selected.id) ? "Sender entfernen" : "Aktuellen Sender sichern"}
+                    </button>
+                  ) : null}
+                  {bouquets.length > 1 ? (
+                    <button className="secondary" onClick={() => removeBouquet(activeBouquet.id)}>
+                      Bouquet loeschen
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>Aufnahme-Planer</h3>
+              <span className="muted">{recordings.length}</span>
+            </div>
+            <div className="actions">
+              <button className="primary" onClick={() => scheduleRecording()}>
+                Aktuelle Auswahl vormerken
+              </button>
+            </div>
+            <div className="savedServerList">
+              {recordings.length ? (
+                recordings.map((entry) => (
+                  <div key={entry.id} className="savedServerCard">
+                    <div>
+                      <strong>{entry.title}</strong>
+                      <div className="small muted">{entry.startsAt}</div>
+                      <div className="small muted">{entry.durationMinutes} Minuten | {entry.status}</div>
+                    </div>
+                    <div className="actions">
+                      <button className="secondary" onClick={() => removeRecording(entry.id)}>
+                        Entfernen
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="infoPanel">
+                  <span>Noch keine Aufnahmen vorgemerkt.</span>
+                </div>
+              )}
             </div>
           </section>
 
@@ -1767,6 +2289,12 @@ export default function AppV39() {
               >
                 Auto Guide
               </button>
+              <button
+                className={`chip ${settings.retryPlayback ? "chipActive" : ""}`}
+                onClick={() => persistSettings({ ...settings, retryPlayback: !settings.retryPlayback })}
+              >
+                Auto Retry
+              </button>
             </div>
             <div className="infoPanel">
               {securityNotes.map((note, index) => (
@@ -1817,7 +2345,7 @@ export default function AppV39() {
                 <button
                   key={profile.id}
                   className={`chip ${activeProfile === profile.name ? "chipActive" : ""}`}
-                  onClick={() => persistState("activeProfile", profile.name, setActiveProfile)}
+                  onClick={() => requestProfileChange(profile)}
                 >
                   {profile.emoji} {profile.name}
                 </button>
@@ -1825,8 +2353,65 @@ export default function AppV39() {
             </div>
             <div className="profileCreate">
               <input placeholder="Neues Profil" value={newProfile} onChange={(event) => setNewProfile(event.target.value)} />
+              <input placeholder="PIN optional" value={newProfilePin} onChange={(event) => setNewProfilePin(event.target.value)} />
               <button className="primary" onClick={addProfile}>
                 Profil anlegen
+              </button>
+            </div>
+            <div className="infoPanel">
+              <span>Aktives Profil: {currentProfile?.name}</span>
+              <span>Kids-Modus: {currentProfile?.kidsMode ? "aktiv" : "aus"}</span>
+              <span>PIN: {currentProfile?.pin ? "gesetzt" : "nicht gesetzt"}</span>
+            </div>
+            <div className="actions">
+              <button className="secondary" onClick={() => updateActiveProfilePatch({ kidsMode: !currentProfile?.kidsMode })}>
+                {currentProfile?.kidsMode ? "Kids-Modus aus" : "Kids-Modus an"}
+              </button>
+              <button className="secondary" onClick={() => updateActiveProfilePatch({ pin: currentProfile?.pin ? "" : "1234" })}>
+                {currentProfile?.pin ? "PIN entfernen" : "PIN 1234 setzen"}
+              </button>
+            </div>
+            <div className="infoPanel">
+              <span>Aufnahme-Voreinstellung: {settings.preferredRecordingMinutes} Minuten</span>
+              <span>Timeshift-Schritt: {settings.timeshiftStepSeconds} Sekunden</span>
+            </div>
+            <div className="actions">
+              {[30, 60, 90].map((minutes) => (
+                <button
+                  key={minutes}
+                  className={`chip ${settings.preferredRecordingMinutes === minutes ? "chipActive" : ""}`}
+                  onClick={() => persistSettings({ ...settings, preferredRecordingMinutes: minutes })}
+                >
+                  {minutes} min DVR
+                </button>
+              ))}
+            </div>
+            <div className="actions">
+              {[15, 30, 60].map((seconds) => (
+                <button
+                  key={seconds}
+                  className={`chip ${settings.timeshiftStepSeconds === seconds ? "chipActive" : ""}`}
+                  onClick={() => persistSettings({ ...settings, timeshiftStepSeconds: seconds })}
+                >
+                  {seconds}s Skip
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="sectionHead">
+              <h3>PWA & Mobile</h3>
+              <span className="muted">{isInstalled ? "installiert" : "bereit"}</span>
+            </div>
+            <div className="infoPanel">
+              <span>Status: {isOnline ? "Online" : "Offline"}</span>
+              <span>Installieren: {isInstalled ? "bereits installiert" : installPromptEvent ? "moeglich" : "noch nicht verfuegbar"}</span>
+              <span>Die App kann jetzt als Startbildschirm-/Desktop-App betrieben werden.</span>
+            </div>
+            <div className="actions">
+              <button className="primary" onClick={installApp}>
+                App installieren
               </button>
             </div>
           </section>
@@ -1848,6 +2433,24 @@ export default function AppV39() {
             </div>
           </section>
         </>
+      ) : null}
+
+      {pinPrompt ? (
+        <section className="modalCard">
+          <div className="sectionHead">
+            <h3>PIN bestaetigen</h3>
+            <span className="muted">{pinPrompt.name}</span>
+          </div>
+          <input placeholder="PIN eingeben" value={pinInput} onChange={(event) => setPinInput(event.target.value)} />
+          <div className="actions">
+            <button className="primary" onClick={confirmProfilePin}>
+              Freigeben
+            </button>
+            <button className="secondary" onClick={() => setPinPrompt(null)}>
+              Abbrechen
+            </button>
+          </div>
+        </section>
       ) : null}
 
       <BottomNav page={page} setPage={setPage} />

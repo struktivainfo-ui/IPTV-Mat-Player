@@ -104,9 +104,9 @@ export const DEMO_ITEMS_V39 = [
 ];
 
 export const DEFAULT_PROFILES_V39 = [
-  { id: "p1", name: "Sven", emoji: "TV" },
-  { id: "p2", name: "Gast", emoji: "Play" },
-  { id: "p3", name: "Kids", emoji: "Kids" },
+  { id: "p1", name: "Sven", emoji: "TV", pin: "", kidsMode: false },
+  { id: "p2", name: "Gast", emoji: "Play", pin: "", kidsMode: false },
+  { id: "p3", name: "Kids", emoji: "Kids", pin: "", kidsMode: true },
 ];
 
 export const DEFAULT_SETTINGS_V39 = {
@@ -117,10 +117,13 @@ export const DEFAULT_SETTINGS_V39 = {
   adultFilter: false,
   connectionMode: "auto",
   focusMode: false,
+  preferredRecordingMinutes: 60,
   privacyMode: false,
+  retryPlayback: true,
   savePasswords: false,
   rememberCredentials: false,
   sortMode: "featured",
+  timeshiftStepSeconds: 30,
   guideFocus: "now",
 };
 

@@ -36,7 +36,7 @@ input {
 
 .app,
 .loginScreen {
-  max-width: 680px;
+  max-width: 1240px;
   margin: 0 auto;
   padding: 22px 14px 112px;
   min-height: 100vh;
@@ -59,7 +59,7 @@ input {
 }
 
 .compactMode {
-  max-width: 560px;
+  max-width: 920px;
 }
 
 .loginScreen {
@@ -93,6 +93,11 @@ input {
     linear-gradient(135deg, rgba(71, 193, 255, 0.08), transparent 35%),
     linear-gradient(180deg, rgba(217, 164, 65, 0.08), transparent 55%),
     var(--card-strong);
+}
+
+.heroPremium {
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+  align-items: start;
 }
 
 .topbar,
@@ -210,7 +215,7 @@ input::placeholder {
 
 .dashboardGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -262,6 +267,42 @@ input::placeholder {
   gap: 10px;
 }
 
+.heroLeft,
+.heroStage {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.heroPoster {
+  min-height: 220px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-position: center;
+  background-size: cover;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  padding: 16px;
+}
+
+.heroPosterMeta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.heroPosterMeta span {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgba(7, 12, 22, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-size: 12px;
+}
+
 .playerState {
   border-radius: 999px;
   padding: 8px 12px;
@@ -287,6 +328,87 @@ input::placeholder {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.contentDeck {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.contentColumn {
+  padding: 18px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.02)),
+    rgba(9, 19, 36, 0.92);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.24);
+}
+
+.contentColumnHeader,
+.contentLaneTop,
+.contentLaneFlags {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.contentColumnHeader {
+  margin-bottom: 12px;
+}
+
+.contentColumnHeader h3 {
+  margin: 6px 0 0;
+}
+
+.contentColumnList {
+  display: grid;
+  gap: 10px;
+}
+
+.contentLane {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  text-align: left;
+}
+
+.contentLane img {
+  width: 74px;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+.contentLaneActive {
+  background: linear-gradient(135deg, rgba(71, 193, 255, 0.16), rgba(217, 164, 65, 0.12));
+  border-color: rgba(247, 219, 136, 0.34);
+}
+
+.contentLaneBody {
+  display: grid;
+  gap: 6px;
+}
+
+.contentLaneMeta,
+.contentLaneFlags {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.contentLaneFlags {
+  justify-content: flex-start;
+  flex-wrap: wrap;
 }
 
 .posterCard {
@@ -459,7 +581,7 @@ input::placeholder {
   left: 50%;
   bottom: 14px;
   transform: translateX(-50%);
-  width: min(680px, calc(100% - 20px));
+  width: min(1240px, calc(100% - 20px));
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
@@ -470,11 +592,23 @@ input::placeholder {
   backdrop-filter: blur(16px);
 }
 
+@media (max-width: 1080px) {
+  .dashboardGrid,
+  .contentDeck {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .heroPremium {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 640px) {
   .dashboardGrid,
   .posterGrid,
-  .channelRail {
-    grid-template-columns: 1fr 1fr;
+  .channelRail,
+  .contentDeck {
+    grid-template-columns: 1fr;
   }
 
   .guideRow {
@@ -483,5 +617,13 @@ input::placeholder {
 
   .profileCreate {
     grid-template-columns: 1fr;
+  }
+
+  .contentLane {
+    grid-template-columns: 64px 1fr;
+  }
+
+  .contentLane img {
+    width: 64px;
   }
 }

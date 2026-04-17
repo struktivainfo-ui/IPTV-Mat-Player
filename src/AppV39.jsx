@@ -525,6 +525,64 @@ function PosterCard({ item, onClick, compact, isFavorite, isRecent }) {
   );
 }
 
+function ContentColumn({
+  title,
+  subtitle,
+  actionLabel,
+  items,
+  selectedId,
+  watchlist,
+  recentIds,
+  guideDataById,
+  onOpen,
+  onAction,
+}) {
+  return (
+    <section className="contentColumn">
+      <div className="contentColumnHeader">
+        <div>
+          <div className="surfaceLabel">{title}</div>
+          <h3>{subtitle}</h3>
+        </div>
+        <button className="secondary" onClick={onAction}>
+          {actionLabel}
+        </button>
+      </div>
+      <div className="contentColumnList">
+        {items.map((item) => {
+          const liveGuide = guideDataById[item.id];
+          const meta =
+            item.section === "live"
+              ? liveGuide?.currentTitle || item.category
+              : item.episodeTitle || item.duration || item.category;
+
+          return (
+            <button
+              key={item.id}
+              className={`contentLane ${selectedId === item.id ? "contentLaneActive" : ""}`}
+              onClick={() => onOpen(item)}
+            >
+              <img src={item.cover || getFallbackCover(item)} alt={item.title} />
+              <div className="contentLaneBody">
+                <div className="contentLaneTop">
+                  <strong>{item.title}</strong>
+                  <span className="miniBadge">{item.badge}</span>
+                </div>
+                <span className="contentLaneMeta">{meta}</span>
+                <div className="contentLaneFlags">
+                  {watchlist.includes(item.id) ? <span>Favorit</span> : null}
+                  {recentIds.includes(item.id) ? <span>Zuletzt</span> : null}
+                  <span>{item.imported ? "Import" : "Demo"}</span>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function BottomNav({ page, setPage }) {
   return (
     <nav className="bottomNav">
@@ -676,6 +734,15 @@ export default function AppV39() {
   );
   const selectedGuide = useMemo(() => (selected ? guideDataById[selected.id] || null : null), [guideDataById, selected]);
   const liveChannelRail = useMemo(() => safeTop(liveItems, 12), [liveItems]);
+  const liveHighlights = useMemo(() => safeTop(liveItems, 5), [liveItems]);
+  const movieHighlights = useMemo(
+    () => safeTop(sortLibraryItems(movieItems, settings.sortMode, recentIds), 5),
+    [movieItems, recentIds, settings.sortMode]
+  );
+  const seriesHighlights = useMemo(
+    () => safeTop(sortLibraryItems(seriesItems, settings.sortMode, recentIds), 5),
+    [recentIds, seriesItems, settings.sortMode]
+  );
   const securityNotes = useMemo(
     () => createSecurityNotes(settings, savedServers),
     [savedServers, settings]
@@ -1623,18 +1690,18 @@ export default function AppV39() {
         <>
           <section className="dashboardGrid">
             <StatCard label="Live TV" value={liveItems.length} hint={`${getCategoryOptions(liveItems).length - 1} Kategorien`} />
-            <StatCard label="Filme" value={movieItems.length} hint={`${movieFavorites.length} Favoriten`} />
+            <StatCard label="VOD" value={movieItems.length} hint={`${movieFavorites.length} Favoriten`} />
             <StatCard label="Serien" value={seriesItems.length} hint={`${seriesFavorites.length} Favoriten`} />
             <StatCard label="Importiert" value={importCount || importedItems.length} hint={lastImportAt || "noch kein Import"} />
           </section>
 
-          <section className="hero">
+          <section className="hero heroPremium">
             <div className="heroLeft">
-              <div className="surfaceLabel">Now Playing</div>
+              <div className="surfaceLabel">Spotlight</div>
               <div className="chips">
                 {["live", "movie", "series", "all"].map((tab) => (
                   <button key={tab} className={`chip ${contentTab === tab ? "chipActive" : ""}`} onClick={() => setContentTab(tab)}>
-                    {tab === "movie" ? "Filme" : tab === "series" ? "Serien" : tab === "all" ? "Alle" : "Live"}
+                    {tab === "movie" ? "VOD" : tab === "series" ? "Serien" : tab === "all" ? "Alle" : "Live"}
                   </button>
                 ))}
               </div>
@@ -1676,20 +1743,82 @@ export default function AppV39() {
                 </button>
               </div>
             </div>
-            <PlayerView
-              item={selected}
-              url={playbackUrl}
-              isHls={isSelectedHls}
-              autoplay={settings.autoplay}
-              onProgress={handleProgress}
-              onStatus={setStatus}
-              connectionLabel={connectionLabel}
-              isPreparing={isPreparingPlayback}
-              retryEnabled={settings.retryPlayback}
-              qualityLevel={selectedQuality}
-              onQualitiesChange={setQualityOptions}
-              onPlaybackIssue={setPlayerError}
-              videoBridgeRef={videoElementRef}
+            <div className="heroStage">
+              <div
+                className="heroPoster"
+                style={{
+                  backgroundImage: `linear-gradient(180deg, rgba(7, 17, 29, 0.05), rgba(7, 17, 29, 0.84)), url("${selected?.cover || getFallbackCover(selected)}")`,
+                }}
+              >
+                <div className="heroPosterMeta">
+                  <span>{selected?.category || "Bibliothek"}</span>
+                  <span>{selected?.rating || "0+"}</span>
+                  <span>{selected?.year || "2026"}</span>
+                </div>
+              </div>
+              <PlayerView
+                item={selected}
+                url={playbackUrl}
+                isHls={isSelectedHls}
+                autoplay={settings.autoplay}
+                onProgress={handleProgress}
+                onStatus={setStatus}
+                connectionLabel={connectionLabel}
+                isPreparing={isPreparingPlayback}
+                retryEnabled={settings.retryPlayback}
+                qualityLevel={selectedQuality}
+                onQualitiesChange={setQualityOptions}
+                onPlaybackIssue={setPlayerError}
+                videoBridgeRef={videoElementRef}
+              />
+            </div>
+          </section>
+
+          <section className="contentDeck">
+            <ContentColumn
+              title="Live"
+              subtitle="Aktuelle Kanaele"
+              actionLabel="Guide"
+              items={liveHighlights}
+              selectedId={selected?.id}
+              watchlist={watchlist}
+              recentIds={recentIds}
+              guideDataById={guideDataById}
+              onOpen={openItem}
+              onAction={() => {
+                setContentTab("live");
+                setCategoryFilter("all");
+              }}
+            />
+            <ContentColumn
+              title="VOD"
+              subtitle="Filme auf Abruf"
+              actionLabel="Bibliothek"
+              items={movieHighlights}
+              selectedId={selected?.id}
+              watchlist={watchlist}
+              recentIds={recentIds}
+              guideDataById={guideDataById}
+              onOpen={openItem}
+              onAction={() => {
+                setContentTab("movie");
+                setCategoryFilter("all");
+              }}
+            />
+            <ContentColumn
+              title="Serien"
+              subtitle="Staffeln & Folgen"
+              actionLabel="Sammlung"
+              items={seriesHighlights}
+              selectedId={selected?.id}
+              watchlist={watchlist}
+              recentIds={recentIds}
+              guideDataById={guideDataById}
+              onOpen={openItem}
+              onAction={() => {
+                setContentTab("series");
+                setCategoryFilter("all");
+              }}
             />
           </section>
 
@@ -1761,7 +1890,7 @@ export default function AppV39() {
 
           <section className="card">
             <div className="sectionHead">
-              <h3>Smart Library</h3>
+              <h3>Alle Inhalte</h3>
               <span className="muted">{filtered.length} Treffer</span>
             </div>
             <input

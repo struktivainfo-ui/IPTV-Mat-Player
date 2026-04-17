@@ -230,19 +230,20 @@ export function buildGuideRows(items, focus = "now", category = "all", guideData
     .slice(0, 10);
 
   return source.map((item, index) => {
+    const guide = guideDataById[item.id];
     const templates = getGuideTemplates(item.category);
-    const currentTitle = `${templates[index % templates.length]} · ${item.category}`;
-    const nextTitle = `${templates[(index + 1) % templates.length]} · ${item.title}`;
+    const currentTitle = guide?.currentTitle || `${templates[index % templates.length]} | ${item.category}`;
+    const nextTitle = guide?.nextTitle || `${templates[(index + 1) % templates.length]} | ${item.title}`;
 
     return {
       id: `guide-${focus}-${item.id}`,
       channel: item.title,
       category: item.category,
-      currentTime: labels[0],
+      currentTime: guide?.currentTime || labels[0],
       currentTitle,
-      nextTime: labels[1],
+      nextTime: guide?.nextTime || labels[1],
       nextTitle,
-      progress: pseudoProgress(item.id),
+      progress: guide?.progress ?? pseudoProgress(item.id),
     };
   });
 }
@@ -272,6 +273,12 @@ export function createSecurityNotes(settings, savedServers) {
     notes.push("Direktmodus ist am anfaelligsten fuer CORS und Mixed Content.");
   } else {
     notes.push("Proxy-Modi schuetzen vor typischen Browser- und HTTPS-Sperren.");
+  }
+
+  if (settings.autoGuide) {
+    notes.push("Der Guide wird bei verfuegbaren Quellen automatisch aktualisiert.");
+  } else {
+    notes.push("Der Guide bleibt manuell steuerbar und laedt nicht automatisch nach.");
   }
 
   if (settings.savePasswords) {

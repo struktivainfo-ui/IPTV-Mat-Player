@@ -16,6 +16,7 @@ const ALLOWED_ACTIONS = new Set([
   "get_vod_streams",
   "get_series",
   "get_series_info",
+  "get_short_epg",
   "get_live_categories",
   "get_vod_categories",
   "get_series_categories",

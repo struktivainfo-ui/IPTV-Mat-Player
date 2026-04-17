@@ -10,7 +10,13 @@ import {
   getCategoryOptions,
   maskSensitiveValue,
   sortLibraryItems,
-} from "./lib/appDataV39.js";
+} from "./lib/appDataV43.js";
+import {
+  buildGuideDataFromXmltv,
+  buildGuideDataFromXtream,
+  buildGuideQueries,
+  getGuideHeadline,
+} from "./lib/guideUtils.js";
 import {
   describeConnectionMode,
   explainNetworkError,
@@ -55,6 +61,7 @@ const SOURCE_LABELS = {
   demo: "Demo",
 };
 
+const APP_VERSION = "v4.3";
 const STB_STREAM_CACHE_MS = 5 * 60 * 1000;
 
 function persistState(key, value, setter) {
@@ -80,6 +87,7 @@ function readAuth(settings) {
     m3uUrl: auth.m3uUrl || "",
     portalUrl: auth.portalUrl || "",
     macAddress: auth.macAddress || "",
+    epgUrl: auth.epgUrl || "",
   };
 }
 
@@ -141,6 +149,7 @@ function createImportedItem(kind, entry, index, auth, categoryMaps, fallbackCove
     cover: entry.stream_icon || entry.cover || fallbackCover,
     progress: (index * (kind === "live" ? 5 : kind === "movie" ? 9 : 7)) % 100,
     importedAt: Date.now(),
+    epgSourceUrl: auth.epgUrl || "",
   };
 
   if (kind === "live") {
@@ -158,6 +167,7 @@ function createImportedItem(kind, entry, index, auth, categoryMaps, fallbackCove
       streamId: String(entry.stream_id),
       streamExt: entry.container_extension || "m3u8",
       epgChannelId: entry.epg_channel_id || "",
+      tvgName: entry.name || `Live ${entry.stream_id}`,
     };
   }
 
@@ -354,10 +364,10 @@ function LoginView({ onLogin }) {
   return (
     <div className="loginScreen">
       <div className="loginCard">
-        <div className="badge">v3.9</div>
+        <div className="badge">{APP_VERSION}</div>
         <h1>IPTV Mat Player</h1>
         <p className="muted">
-          Smart Library, TV Guide, Serverprofile und Vercel-freundlicher Proxy in einer Version.
+          Live EPG, Fast Zapping, Quellen-Manager und app-artige TV-Oberflaeche in einer Version.
         </p>
         <input placeholder="Benutzername" value={user} onChange={(event) => setUser(event.target.value)} />
         <input placeholder="Passwort" type="password" value={pass} onChange={(event) => setPass(event.target.value)} />
@@ -418,6 +428,7 @@ function BottomNav({ page, setPage }) {
 }
 
 export default function AppV39() {
+  const autoGuideSignatureRef = useRef("");
   const [session, setSession] = useState(() => load("session", null));
   const [profiles, setProfiles] = useState(() => load("profiles", DEFAULT_PROFILES_V39));
   const [activeProfile, setActiveProfile] = useState(() => load("activeProfile", DEFAULT_PROFILES_V39[0].name));
@@ -442,6 +453,8 @@ export default function AppV39() {
   const [isPreparingPlayback, setIsPreparingPlayback] = useState(true);
   const [resolvedPlaybackUrl, setResolvedPlaybackUrl] = useState("");
   const [categoryMaps, setCategoryMaps] = useState(() => load("categoryMaps", { live: {}, movie: {}, series: {} }));
+  const [guideDataById, setGuideDataById] = useState(() => load("guideDataById", {}));
+  const [lastGuideSyncAt, setLastGuideSyncAt] = useState(() => load("lastGuideSyncAt", ""));
 
   const selected = items.find((item) => item.id === selectedId) || items[0] || null;
   const selectedSourceLabel = useMemo(
@@ -514,9 +527,11 @@ export default function AppV39() {
   const movieFavorites = watchlistItems.filter((item) => item.section === "movie");
   const seriesFavorites = watchlistItems.filter((item) => item.section === "series");
   const guideRows = useMemo(
-    () => buildGuideRows(liveItems, settings.guideFocus, contentTab === "live" ? categoryFilter : "all"),
-    [categoryFilter, contentTab, liveItems, settings.guideFocus]
+    () => buildGuideRows(liveItems, settings.guideFocus, contentTab === "live" ? categoryFilter : "all", guideDataById),
+    [categoryFilter, contentTab, guideDataById, liveItems, settings.guideFocus]
   );
+  const selectedGuide = useMemo(() => (selected ? guideDataById[selected.id] || null : null), [guideDataById, selected]);
+  const liveChannelRail = useMemo(() => safeTop(liveItems, 12), [liveItems]);
   const securityNotes = useMemo(
     () => createSecurityNotes(settings, savedServers),
     [savedServers, settings]
@@ -535,6 +550,7 @@ export default function AppV39() {
       m3uUrl: nextAuth.m3uUrl,
       portalUrl: nextAuth.portalUrl,
       macAddress: nextAuth.macAddress,
+      epgUrl: nextAuth.epgUrl,
     };
     save("auth", storedAuth);
     setAuth(nextAuth);
@@ -584,10 +600,12 @@ export default function AppV39() {
 
     startTransition(() => {
       persistState("categoryMaps", nextCategoryMaps, setCategoryMaps);
+      persistState("guideDataById", {}, setGuideDataById);
       persistState("items", mapped, setItems);
       persistState("selectedId", nextSelected.id, setSelectedId);
       persistState("importCount", mapped.length, setImportCount);
       persistState("lastImportAt", timestamp, setLastImportAt);
+      persistState("lastGuideSyncAt", "", setLastGuideSyncAt);
     });
 
     touchRecent(nextSelected.id);
@@ -606,6 +624,125 @@ export default function AppV39() {
       },
       body: JSON.stringify(payload),
     });
+  }
+
+  function persistGuideState(nextGuideData, syncLabel = "") {
+    persistState("guideDataById", nextGuideData, setGuideDataById);
+
+    if (syncLabel) {
+      persistState("lastGuideSyncAt", syncLabel, setLastGuideSyncAt);
+    }
+  }
+
+  async function loadXmltvGuideData(sourceItems, epgUrl) {
+    const liveSource = safeTop(sourceItems.filter((item) => item.section === "live"), 40);
+    const queries = buildGuideQueries(liveSource);
+
+    if (!epgUrl || !queries.length) {
+      return {};
+    }
+
+    const payload = await postJson("/api/epg", {
+      url: epgUrl,
+      queries,
+      maxProgramsPerItem: 3,
+      hoursForward: 18,
+    });
+
+    return buildGuideDataFromXmltv(payload?.matches || {});
+  }
+
+  async function loadXtreamGuideData(sourceItems) {
+    const liveSource = safeTop(
+      sourceItems.filter((item) => item.section === "live" && item.sourceType === "xtream" && item.streamId),
+      12
+    );
+
+    if (!liveSource.length) {
+      return {};
+    }
+
+    const guideEntries = await Promise.all(
+      liveSource.map(async (item) => {
+        try {
+          const payload = await fetchXtreamJson({
+            server: item.server,
+            username: item.username,
+            password: item.password,
+            action: "get_short_epg",
+            params: {
+              stream_id: item.streamId,
+              limit: 3,
+            },
+            mode: settings.connectionMode,
+          });
+
+          return [item.id, buildGuideDataFromXtream(payload)];
+        } catch {
+          return [item.id, null];
+        }
+      })
+    );
+
+    return guideEntries.reduce((accumulator, [itemId, guide]) => {
+      if (guide?.current || guide?.next) {
+        accumulator[itemId] = guide;
+      }
+      return accumulator;
+    }, {});
+  }
+
+  async function syncGuideData(options = {}) {
+    const {
+      itemsOverride = items,
+      authOverride = auth,
+      auto = false,
+      preferredEpgUrl = "",
+    } = options;
+    const liveSource = itemsOverride.filter((item) => item.section === "live");
+
+    if (!liveSource.length) {
+      return {};
+    }
+
+    const epgUrl =
+      preferredEpgUrl ||
+      authOverride.epgUrl ||
+      liveSource.find((item) => item.epgSourceUrl)?.epgSourceUrl ||
+      "";
+
+    try {
+      if (!auto) {
+        setStatus("Guide-Daten werden synchronisiert ...");
+      }
+
+      let nextGuideData = {};
+
+      if (epgUrl) {
+        nextGuideData = await loadXmltvGuideData(liveSource, epgUrl);
+      }
+
+      if (!Object.keys(nextGuideData).length && liveSource.some((item) => item.sourceType === "xtream")) {
+        nextGuideData = await loadXtreamGuideData(liveSource);
+      }
+
+      if (Object.keys(nextGuideData).length) {
+        const syncLabel = new Date().toLocaleString("de-DE");
+        persistGuideState(nextGuideData, syncLabel);
+        if (!auto) {
+          setStatus(`Guide synchronisiert: ${Object.keys(nextGuideData).length} Kanaele aktualisiert.`);
+        }
+      } else if (!auto) {
+        setStatus("Kein Guide verfuegbar. Hinterlege eine XMLTV-URL oder nutze Xtream mit EPG.");
+      }
+
+      return nextGuideData;
+    } catch (error) {
+      if (!auto) {
+        setStatus(error?.message || "Guide konnte nicht geladen werden.");
+      }
+      return {};
+    }
   }
 
   function handleProgress(percent) {
@@ -680,6 +817,20 @@ export default function AppV39() {
 
     if (item.section === "series" && item.imported && item.sourceType === "xtream" && !item.streamId) {
       await ensureSeriesEpisode(item.id);
+    }
+  }
+
+  function moveLiveSelection(direction) {
+    if (!selected || selected.section !== "live" || liveItems.length < 2) {
+      return;
+    }
+
+    const currentIndex = liveItems.findIndex((item) => item.id === selected.id);
+    const nextIndex = currentIndex < 0 ? 0 : (currentIndex + direction + liveItems.length) % liveItems.length;
+    const nextItem = liveItems[nextIndex];
+
+    if (nextItem) {
+      openItem(nextItem, page === "details" ? "details" : "home").catch(() => {});
     }
   }
 
@@ -795,6 +946,54 @@ export default function AppV39() {
     settings.connectionMode,
   ]);
 
+  useEffect(() => {
+    if (!settings.autoGuide) {
+      return;
+    }
+
+    const importedLive = safeTop(liveItems.filter((item) => item.imported), 20);
+
+    if (!importedLive.length) {
+      return;
+    }
+
+    const signature = `${auth.epgUrl}|${lastImportAt}|${importedLive.map((item) => item.id).join(",")}`;
+
+    if (autoGuideSignatureRef.current === signature) {
+      return;
+    }
+
+    const needsGuideSync = importedLive.some((item) => !guideDataById[item.id]);
+
+    if (!needsGuideSync) {
+      return;
+    }
+
+    autoGuideSignatureRef.current = signature;
+    syncGuideData({ auto: true }).catch(() => {});
+  }, [auth.epgUrl, guideDataById, lastImportAt, liveItems, settings.autoGuide]);
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (page !== "home" && page !== "details") {
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        moveLiveSelection(-1);
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        moveLiveSelection(1);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [liveItems, page, selected]);
+
   async function handleImport() {
     const validationMessage = requireAuthFields();
 
@@ -810,11 +1009,17 @@ export default function AppV39() {
         const payload = await postJson("/api/m3u", {
           url: auth.m3uUrl,
         });
+        const detectedEpgUrl = payload?.meta?.epgUrl || auth.epgUrl || "";
         const mapped = safeTop(payload?.items || [], 200).map((item) => ({
           ...item,
           cover: item.cover || getFallbackCover(item),
+          epgSourceUrl: detectedEpgUrl,
           importedAt: Date.now(),
         }));
+
+        if (detectedEpgUrl !== auth.epgUrl) {
+          persistAuth({ ...auth, epgUrl: detectedEpgUrl });
+        }
 
         applyImportedLibrary(
           mapped,
@@ -835,6 +1040,7 @@ export default function AppV39() {
         const mapped = safeTop(payload?.items || [], 160).map((item) => ({
           ...item,
           cover: item.cover || getFallbackCover(item),
+          epgSourceUrl: auth.epgUrl || "",
           importedAt: Date.now(),
         }));
 
@@ -909,7 +1115,10 @@ export default function AppV39() {
         ...safeTop(series, 80).map((entry, index) =>
           createImportedItem("series", entry, index, auth, nextCategoryMaps, DEMO_ITEMS_V39[4].cover)
         ),
-      ];
+      ].map((item) => ({
+        ...item,
+        epgSourceUrl: auth.epgUrl || item.epgSourceUrl || "",
+      }));
 
       applyImportedLibrary(mapped, `${mapped.length} Xtream-Eintraege importiert. Smart Library und Guide wurden aktualisiert.`, nextCategoryMaps);
     } catch (error) {
@@ -938,6 +1147,7 @@ export default function AppV39() {
         m3uUrl: auth.m3uUrl,
         portalUrl: auth.portalUrl,
         macAddress: auth.macAddress,
+        epgUrl: auth.epgUrl,
         savedAt: new Date().toLocaleString("de-DE"),
       },
       ...savedServers,
@@ -957,6 +1167,7 @@ export default function AppV39() {
       m3uUrl: server.m3uUrl || "",
       portalUrl: server.portalUrl || "",
       macAddress: server.macAddress || "",
+      epgUrl: server.epgUrl || "",
     };
     persistAuth(nextAuth);
     setStatus(`Serverprofil geladen: ${server.name}`);
@@ -986,6 +1197,8 @@ export default function AppV39() {
     persistState("importCount", 0, setImportCount);
     persistState("lastImportAt", "", setLastImportAt);
     persistState("categoryMaps", { live: {}, movie: {}, series: {} }, setCategoryMaps);
+    persistState("guideDataById", {}, setGuideDataById);
+    persistState("lastGuideSyncAt", "", setLastGuideSyncAt);
     setIsPreparingPlayback(true);
     setResolvedPlaybackUrl(resolvePlaybackUrl(DEMO_ITEMS_V39[0], settings.connectionMode));
     setStatus("Demo-Bibliothek geladen.");
@@ -1009,17 +1222,18 @@ export default function AppV39() {
   }
 
   return (
-    <div className={`app ${settings.compactMode ? "compactMode" : ""}`}>
+    <div className={`app ${settings.compactMode ? "compactMode" : ""} ${settings.focusMode ? "focusMode" : ""}`}>
       <header className="topbar">
         <div>
-          <div className="badge">v3.9</div>
-          <h1>IPTV Mat Player · {activeProfile}</h1>
-          <p className="muted">v3.6 Smart Library · v3.7 TV Guide · v3.8 Serverprofile · v3.9 UX & Sicherheit</p>
+          <div className="badge">{APP_VERSION}</div>
+          <h1>IPTV Mat Player | {activeProfile}</h1>
+          <p className="muted">v4.0 Live EPG | v4.1 Fast Zapping | v4.2 Quellen-Manager | v4.3 App Shell</p>
           <div className="workspaceMeta">
             <span>{connectionLabel}</span>
             <span>{importedItems.length ? `${importedItems.length} Import-Streams` : "Demo-Bibliothek aktiv"}</span>
             <span>{savedServers.length} Serverprofile</span>
             <span>{selectedSourceLabel} aktiv</span>
+            <span>{lastGuideSyncAt ? `Guide ${lastGuideSyncAt}` : "Guide bereit zum Sync"}</span>
           </div>
         </div>
         <button
@@ -1057,16 +1271,36 @@ export default function AppV39() {
                 <span>{connectionLabel}</span>
                 <span>{selected?.imported ? `${selectedSourceLabel}-Quelle` : "Demo-Quelle"}</span>
                 <span>{selected?.episodeTitle || selected?.duration || "Bereit"}</span>
+                <span>{getGuideHeadline(selectedGuide)}</span>
               </div>
+              {selectedGuide ? (
+                <div className="infoPanel compactPanel">
+                  <span>Jetzt: {selectedGuide.currentTitle}</span>
+                  <span>Danach: {selectedGuide.nextTitle}</span>
+                </div>
+              ) : null}
               <div className="actions">
                 <button className="primary" onClick={() => selected && toggleFavorite(selected.id)}>
                   {selected && watchlist.includes(selected.id) ? "Aus Favoriten" : "Zu Favoriten"}
                 </button>
+                {selected?.section === "live" ? (
+                  <>
+                    <button className="secondary" onClick={() => moveLiveSelection(-1)}>
+                      Kanal -
+                    </button>
+                    <button className="secondary" onClick={() => moveLiveSelection(1)}>
+                      Kanal +
+                    </button>
+                  </>
+                ) : null}
                 {selected?.section === "series" && selected?.imported && selected?.sourceType === "xtream" && !selected?.streamId ? (
                   <button className="secondary" onClick={() => ensureSeriesEpisode(selected.id)}>
                     Episode laden
                   </button>
                 ) : null}
+                <button className="secondary" onClick={() => persistSettings({ ...settings, focusMode: !settings.focusMode })}>
+                  {settings.focusMode ? "TV-Modus aus" : "TV-Modus an"}
+                </button>
               </div>
             </div>
             <PlayerView
@@ -1080,6 +1314,27 @@ export default function AppV39() {
               isPreparing={isPreparingPlayback}
             />
           </section>
+
+          {liveChannelRail.length ? (
+            <section className="card">
+              <div className="sectionHead">
+                <h3>Fast Zapping</h3>
+                <span className="muted">Pfeiltasten hoch/runter oder Schnellwahl</span>
+              </div>
+              <div className="channelRail">
+                {liveChannelRail.map((item) => (
+                  <button
+                    key={item.id}
+                    className={`channelChip ${selected?.id === item.id ? "channelChipActive" : ""}`}
+                    onClick={() => openItem(item, page === "details" ? "details" : "home")}
+                  >
+                    <strong>{item.title}</strong>
+                    <span>{guideDataById[item.id]?.currentTitle || item.category}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="card">
             <div className="sectionHead">
@@ -1153,6 +1408,9 @@ export default function AppV39() {
                   {label}
                 </button>
               ))}
+              <button className="chip" onClick={() => syncGuideData()}>
+                Guide sync
+              </button>
             </div>
             <div className="guideList">
               {guideRows.map((row) => (
@@ -1176,6 +1434,9 @@ export default function AppV39() {
                   </div>
                 </div>
               ))}
+            </div>
+            <div className="small muted">
+              {lastGuideSyncAt ? `Letzter Guide-Sync: ${lastGuideSyncAt}` : "Noch kein Guide-Sync ausgefuehrt."}
             </div>
           </section>
         </>
@@ -1203,11 +1464,23 @@ export default function AppV39() {
                 <span>Quelle: {selected.imported ? `${selectedSourceLabel} Import` : "Demo Bibliothek"}</span>
                 <span>Verbindungsmodus: {connectionLabel}</span>
                 <span>Fortschritt: {selected.progress || 0}%</span>
+                {selectedGuide ? <span>Jetzt: {selectedGuide.currentTitle}</span> : null}
+                {selectedGuide ? <span>Danach: {selectedGuide.nextTitle}</span> : null}
               </div>
               <div className="actions">
                 <button className="primary" onClick={() => toggleFavorite(selected.id)}>
                   {watchlist.includes(selected.id) ? "Aus Favoriten" : "Zu Favoriten"}
                 </button>
+                {selected.section === "live" ? (
+                  <>
+                    <button className="secondary" onClick={() => moveLiveSelection(-1)}>
+                      Kanal -
+                    </button>
+                    <button className="secondary" onClick={() => moveLiveSelection(1)}>
+                      Kanal +
+                    </button>
+                  </>
+                ) : null}
                 {selected.section === "series" && selected.imported && selected.sourceType === "xtream" && !selected.streamId ? (
                   <button className="secondary" onClick={() => ensureSeriesEpisode(selected.id)}>
                     Episode laden
@@ -1364,6 +1637,11 @@ export default function AppV39() {
                   </div>
                 </>
               ) : null}
+              <input
+                placeholder="XMLTV / EPG-URL (optional)"
+                value={auth.epgUrl}
+                onChange={(event) => persistAuth({ ...auth, epgUrl: event.target.value })}
+              />
             </div>
             <div className="actions">
               <button className="primary" onClick={handleImport}>
@@ -1375,6 +1653,9 @@ export default function AppV39() {
               </button>
               <button className="secondary" onClick={resetDemo}>
                 Demo laden
+              </button>
+              <button className="secondary" onClick={() => syncGuideData()}>
+                Guide synchronisieren
               </button>
             </div>
           </section>
@@ -1480,6 +1761,12 @@ export default function AppV39() {
               >
                 Zugang merken
               </button>
+              <button
+                className={`chip ${settings.autoGuide ? "chipActive" : ""}`}
+                onClick={() => persistSettings({ ...settings, autoGuide: !settings.autoGuide })}
+              >
+                Auto Guide
+              </button>
             </div>
             <div className="infoPanel">
               {securityNotes.map((note, index) => (
@@ -1518,6 +1805,12 @@ export default function AppV39() {
               >
                 16+ ausblenden
               </button>
+              <button
+                className={`chip ${settings.focusMode ? "chipActive" : ""}`}
+                onClick={() => persistSettings({ ...settings, focusMode: !settings.focusMode })}
+              >
+                TV-Modus
+              </button>
             </div>
             <div className="profileRow">
               {profiles.map((profile) => (
@@ -1546,6 +1839,7 @@ export default function AppV39() {
             <div className="infoPanel">
               <span>{status}</span>
               <span>{lastImportAt ? `Letzter Import: ${lastImportAt}` : "Noch kein Import ausgefuehrt."}</span>
+              <span>{lastGuideSyncAt ? `Guide-Sync: ${lastGuideSyncAt}` : "Guide noch nicht synchronisiert."}</span>
               <span>Aktiver Modus: {getSourceLabel(auth.sourceType, true)}</span>
               <span>{isPreparingPlayback ? "Playback wird vorbereitet ..." : "Playback bereit."}</span>
               <span>

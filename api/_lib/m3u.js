@@ -113,6 +113,8 @@ export function createM3uItems({ playlistUrl, entries }) {
       streamType: section,
       sourceType: "m3u",
       sourceUrl: playlistUrl,
+      epgSourceUrl: "",
+      tvgName: entry.tvgName || entry.title,
       imported: true,
       cover: entry.logo || "",
       epgChannelId: entry.epgId || "",

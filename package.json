@@ -1,7 +1,7 @@
 {
   "name": "iptv-mat-player",
   "private": true,
-  "version": "3.9.0",
+  "version": "4.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

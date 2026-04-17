@@ -205,6 +205,7 @@ export function createStbItems({ portalUrl, macAddress, genres, channels }) {
     macAddress: normalizeMacAddress(macAddress),
     stbChannelId: String(channel.id || index),
     stbCmd: normalizeCmd(channel.cmd || channel.cmds?.cmd || ""),
+    epgName: channel.name || `Kanal ${index + 1}`,
     epgChannelId: channel.xmltv_id || channel.epg_id || "",
     imported: true,
     cover: channel.logo || "",

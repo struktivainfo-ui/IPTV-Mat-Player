@@ -18,6 +18,7 @@ import {
   getGuideHeadline,
 } from "./lib/guideUtils.js";
 import {
+  buildAppApiUrl,
   describeConnectionMode,
   explainNetworkError,
   fetchJsonWithTimeout,
@@ -1155,7 +1156,7 @@ export default function AppV39() {
   }
 
   async function postJson(endpoint, payload) {
-    return fetchJsonWithTimeout(endpoint, {
+    return fetchJsonWithTimeout(buildAppApiUrl(endpoint), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

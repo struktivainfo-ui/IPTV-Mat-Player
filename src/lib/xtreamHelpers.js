@@ -1,5 +1,42 @@
 const DEFAULT_TIMEOUT_MS = 12000;
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
+const DEV_PORTS = new Set(["5173", "4173"]);
+const APP_BACKEND_URL = "https://iptv-mat-player.vercel.app";
+
+export function isNativeRuntime() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const { protocol, hostname, port } = window.location;
+  const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent || "";
+
+  if (protocol === "capacitor:" || protocol === "ionic:") {
+    return true;
+  }
+
+  if (LOCAL_HOSTS.has(hostname) && !DEV_PORTS.has(port) && (port === "" || /Android|wv/i.test(userAgent))) {
+    return true;
+  }
+
+  return false;
+}
+
+export function buildAppApiUrl(path = "") {
+  if (!path) {
+    return APP_BACKEND_URL;
+  }
+
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  if (!isNativeRuntime()) {
+    return path;
+  }
+
+  return `${APP_BACKEND_URL}${String(path).startsWith("/") ? path : `/${path}`}`;
+}
 
 export function normalizeBaseUrl(url) {
   return String(url || "").trim().replace(/\/+$/, "");
@@ -42,7 +79,7 @@ export function buildProxyMediaUrl(targetUrl) {
     return "";
   }
 
-  return `/api/media?target=${encodeURIComponent(targetUrl)}`;
+  return buildAppApiUrl(`/api/media?target=${encodeURIComponent(targetUrl)}`);
 }
 
 export function isLocalRuntime() {
@@ -50,7 +87,7 @@ export function isLocalRuntime() {
     return false;
   }
 
-  return LOCAL_HOSTS.has(window.location.hostname) || window.location.port === "5173" || window.location.port === "4173";
+  return !isNativeRuntime() && (LOCAL_HOSTS.has(window.location.hostname) || DEV_PORTS.has(window.location.port));
 }
 
 export function isMixedContentRisk(url) {
@@ -169,7 +206,7 @@ export async function fetchJsonWithTimeout(url, options = {}) {
 }
 
 async function fetchViaProxy(payload, timeoutMs) {
-  return fetchJsonWithTimeout("/api/xtream", {
+  return fetchJsonWithTimeout(buildAppApiUrl("/api/xtream"), {
     method: "POST",
     timeoutMs,
     headers: {

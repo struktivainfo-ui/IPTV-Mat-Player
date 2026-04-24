@@ -80,14 +80,31 @@ export function parseM3uPlaylist(body) {
 
 export async function fetchM3uPlaylist(targetUrl, requestInit = {}) {
   const safeUrl = ensureSafeUrl(targetUrl);
-  const response = await fetch(safeUrl, {
-    ...requestInit,
-    redirect: "follow",
-  });
-  const body = await response.text();
+  let response;
+  let body = "";
+
+  try {
+    response = await fetch(safeUrl, {
+      ...requestInit,
+      headers: {
+        Accept: "*/*",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+        ...(requestInit.headers || {}),
+      },
+      redirect: "follow",
+    });
+    body = await response.text();
+  } catch (error) {
+    throw new Error("Die Playlist-URL konnte vom Server nicht geladen werden.");
+  }
 
   if (!response.ok) {
     throw new Error(body || `HTTP ${response.status}`);
+  }
+
+  if (!body.includes("#EXTM3U") && !body.includes("#EXTINF")) {
+    throw new Error("Die URL hat keine gueltige M3U-Playlist geliefert.");
   }
 
   return parseM3uPlaylist(body);

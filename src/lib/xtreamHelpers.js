@@ -186,7 +186,18 @@ export async function fetchJsonWithTimeout(url, options = {}) {
     const responseText = await response.text();
 
     if (!response.ok) {
-      throw new Error(responseText || `HTTP ${response.status}`);
+      let message = responseText || `HTTP ${response.status}`;
+
+      try {
+        const parsed = responseText ? JSON.parse(responseText) : null;
+        if (parsed?.error) {
+          message = parsed.error;
+        }
+      } catch {
+        // Keep raw text when the response is not JSON.
+      }
+
+      throw new Error(message);
     }
 
     if (!contentType.includes("application/json")) {
@@ -279,6 +290,10 @@ export function explainNetworkError(error, connectionMode = "auto") {
 
   if (/Zeitueberschreitung/i.test(message)) {
     return "Der IPTV-Server hat zu langsam geantwortet.";
+  }
+
+  if (/fetch failed/i.test(message)) {
+    return "Die M3U-Quelle konnte vom Server nicht geladen werden. Nutze am besten M3U-Text oder eine lokale M3U-Datei.";
   }
 
   if (/JSON-Antwort/i.test(message)) {

@@ -62,7 +62,7 @@ const SOURCE_LABELS = {
   demo: "Demo",
 };
 
-const APP_VERSION = "v5.3";
+const APP_VERSION = "v5.4";
 const PLAYER_RETRY_LIMIT = 2;
 const PLAYBACK_TIMEOUT_MS = 15000;
 const STB_STREAM_CACHE_MS = 5 * 60 * 1000;

@@ -1061,6 +1061,14 @@ export default function AppV39() {
     () => createSecurityNotes(settings, savedServers),
     [savedServers, settings]
   );
+  const loadedCategoryCount = useMemo(
+    () => Object.values(categoryMaps.live || {}).length + Object.values(categoryMaps.movie || {}).length + Object.values(categoryMaps.series || {}).length,
+    [categoryMaps]
+  );
+  const importedCategoryCount = useMemo(
+    () => new Set(importedItems.map((item) => String(item.category || "").trim()).filter(Boolean)).size,
+    [importedItems]
+  );
   const profileWatchTotals = useMemo(
     () =>
       profiles.map((profile) => ({
@@ -1096,7 +1104,7 @@ export default function AppV39() {
     setAuth(nextAuth);
   }
 
-  function applyImportedM3u(itemsToImport, sourceLabel, detectedEpgUrl = "") {
+  function applyImportedM3u(itemsToImport, sourceLabel, detectedEpgUrl = "", mode = "replace") {
     const nextEpgUrl = detectedEpgUrl || auth.epgUrl || "";
     const mapped = safeTop(itemsToImport || [], 400).map((item) => ({
       ...item,
@@ -1104,14 +1112,17 @@ export default function AppV39() {
       epgSourceUrl: nextEpgUrl,
       importedAt: Date.now(),
     }));
+    const nextItems = mode === "merge" ? [...items, ...mapped] : mapped;
 
     if (nextEpgUrl && nextEpgUrl !== auth.epgUrl) {
       persistAuth({ ...auth, epgUrl: nextEpgUrl });
     }
 
     applyImportedLibrary(
-      mapped,
-      buildImportSummary(sourceLabel, mapped.length),
+      nextItems,
+      mode === "merge"
+        ? `${buildImportSummary(sourceLabel, mapped.length)} Bibliothek wurde um M3U-Eintraege erweitert.`
+        : buildImportSummary(sourceLabel, mapped.length),
       { live: {}, movie: {}, series: {} }
     );
   }
@@ -2048,6 +2059,27 @@ export default function AppV39() {
     }
   }
 
+  function handleMergeM3uText() {
+    try {
+      if (!m3uTextInput.trim()) {
+        setStatus("Bitte M3U-Text einfuegen.");
+        return;
+      }
+
+      setStatus("M3U-Text wird zur Bibliothek hinzugefuegt ...");
+      save("m3uTextInput", m3uTextInput);
+      const parsed = createM3uItemsFromText(m3uTextInput);
+
+      if (!parsed.items.length) {
+        throw new Error("Keine M3U-Eintraege im eingefuegten Text gefunden.");
+      }
+
+      applyImportedM3u(parsed.items, "M3U-Text", parsed.meta?.epgUrl || "", "merge");
+    } catch (error) {
+      setStatus(error?.message || "M3U-Text konnte nicht ergaenzt werden.");
+    }
+  }
+
   async function handleImportM3uFile(event) {
     const file = event.target.files?.[0];
 
@@ -2845,6 +2877,11 @@ export default function AppV39() {
                   M3U-Text importieren
                 </button>
               ) : null}
+              {auth.sourceType === "m3u" ? (
+                <button className="secondary" onClick={handleMergeM3uText}>
+                  M3U-Text ergaenzen
+                </button>
+              ) : null}
               <button className="secondary" onClick={resetDemo}>
                 Demo laden
               </button>
@@ -3134,8 +3171,13 @@ export default function AppV39() {
               <span>{lastGuideSyncAt ? `Guide-Sync: ${lastGuideSyncAt}` : "Guide noch nicht synchronisiert."}</span>
               <span>Aktiver Modus: {getSourceLabel(auth.sourceType, true)}</span>
               <span>{isPreparingPlayback ? "Playback wird vorbereitet ..." : "Playback bereit."}</span>
+              <span>{importedItems.length ? `Importierte Eintraege: ${importedItems.length}` : "Noch keine importierten Eintraege."}</span>
               <span>
-                Kategorien geladen: {Object.values(categoryMaps.live || {}).length + Object.values(categoryMaps.movie || {}).length + Object.values(categoryMaps.series || {}).length}
+                {loadedCategoryCount
+                  ? `Xtream-Kategorien geladen: ${loadedCategoryCount}`
+                  : importedCategoryCount
+                    ? `M3U-Gruppen erkannt: ${importedCategoryCount}`
+                    : "Noch keine Kategorien oder M3U-Gruppen erkannt."}
               </span>
             </div>
           </section>

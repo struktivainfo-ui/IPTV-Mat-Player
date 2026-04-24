@@ -1,54 +1,54 @@
-import { ensureSafeUrl, forwardHeaders, rewritePlaylist, text } from "./_lib/proxy.js";
+import { ensureSafeUrl, forwardHeaders, sendText, text, rewritePlaylist } from "./_lib/proxy.js";
 
 function isPlaylist(targetUrl, contentType) {
   return targetUrl.pathname.endsWith(".m3u8") || /mpegurl|x-mpegurl/i.test(contentType || "");
 }
 
-export default async function handler(request) {
+export default async function handler(request, response) {
   if (!["GET", "HEAD"].includes(request.method)) {
-    return text("Method not allowed.", 405);
+    return sendText(response, "Method not allowed.", 405);
   }
 
   try {
-    const requestUrl = new URL(request.url);
+    const requestUrl = new URL(request.url, "http://localhost");
     const target = requestUrl.searchParams.get("target");
     const safeTarget = ensureSafeUrl(target);
-    const response = await fetch(safeTarget, {
+    const upstream = await fetch(safeTarget, {
       method: request.method,
       headers: forwardHeaders(request),
       redirect: "follow",
     });
-    const contentType = response.headers.get("content-type") || "application/octet-stream";
+    const contentType = upstream.headers.get("content-type") || "application/octet-stream";
 
     if (isPlaylist(safeTarget, contentType)) {
-      const playlist = await response.text();
+      const playlist = await upstream.text();
       const rewritten = rewritePlaylist(playlist, safeTarget);
-
-      return new Response(rewritten, {
-        status: response.status,
-        headers: {
-          "Cache-Control": "no-store, max-age=0",
-          "Content-Type": "application/vnd.apple.mpegurl; charset=utf-8",
-        },
-      });
+      response.statusCode = upstream.status;
+      response.setHeader("Cache-Control", "no-store, max-age=0");
+      response.setHeader("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8");
+      response.end(rewritten);
+      return;
     }
 
-    const headers = new Headers();
-    headers.set("Cache-Control", "no-store, max-age=0");
-    headers.set("Content-Type", contentType);
+    response.statusCode = upstream.status;
+    response.setHeader("Cache-Control", "no-store, max-age=0");
+    response.setHeader("Content-Type", contentType);
 
     ["accept-ranges", "content-length", "content-range"].forEach((name) => {
-      const value = response.headers.get(name);
+      const value = upstream.headers.get(name);
       if (value) {
-        headers.set(name, value);
+        response.setHeader(name, value);
       }
     });
 
-    return new Response(response.body, {
-      status: response.status,
-      headers,
-    });
+    if (request.method === "HEAD") {
+      response.end();
+      return;
+    }
+
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    response.end(buffer);
   } catch (error) {
-    return text(error.message || "Medien-Proxy fehlgeschlagen.", 400);
+    return sendText(response, error.message || "Medien-Proxy fehlgeschlagen.", 400);
   }
 }

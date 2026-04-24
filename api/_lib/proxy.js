@@ -76,11 +76,24 @@ export function buildProxyUrl(target) {
   return `/api/media?target=${encodeURIComponent(target)}`;
 }
 
+function getHeaderValue(request, name) {
+  if (!request?.headers) {
+    return "";
+  }
+
+  if (typeof request.headers.get === "function") {
+    return request.headers.get(name) || "";
+  }
+
+  const value = request.headers[name] ?? request.headers[String(name || "").toLowerCase()];
+  return Array.isArray(value) ? value.join(", ") : value || "";
+}
+
 export function forwardHeaders(request) {
   const headers = new Headers();
 
   ["accept", "range", "user-agent"].forEach((name) => {
-    const value = request.headers.get(name);
+    const value = getHeaderValue(request, name);
     if (value) {
       headers.set(name, value);
     }
@@ -89,24 +102,43 @@ export function forwardHeaders(request) {
   return headers;
 }
 
-export function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Cache-Control": "no-store, max-age=0",
-      "Content-Type": "application/json; charset=utf-8",
-    },
+export async function readJsonBody(request) {
+  if (!request) {
+    return {};
+  }
+
+  if (typeof request.json === "function") {
+    return request.json();
+  }
+
+  if (typeof request.body === "object" && request.body && typeof request.body === "object" && !Buffer.isBuffer(request.body)) {
+    return request.body;
+  }
+
+  const chunks = [];
+
+  await new Promise((resolve, reject) => {
+    request.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    request.on("end", resolve);
+    request.on("error", reject);
   });
+
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  return raw ? JSON.parse(raw) : {};
 }
 
-export function text(message, status = 400, contentType = "text/plain; charset=utf-8") {
-  return new Response(message, {
-    status,
-    headers: {
-      "Cache-Control": "no-store, max-age=0",
-      "Content-Type": contentType,
-    },
-  });
+export function sendJson(response, data, status = 200) {
+  response.statusCode = status;
+  response.setHeader("Cache-Control", "no-store, max-age=0");
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  response.end(JSON.stringify(data));
+}
+
+export function sendText(response, message, status = 400, contentType = "text/plain; charset=utf-8") {
+  response.statusCode = status;
+  response.setHeader("Cache-Control", "no-store, max-age=0");
+  response.setHeader("Content-Type", contentType);
+  response.end(message);
 }
 
 function rewriteUriAttributes(line, baseUrl) {

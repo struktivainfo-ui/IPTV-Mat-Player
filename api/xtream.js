@@ -1,36 +1,33 @@
-import { buildXtreamTarget, forwardHeaders, json } from "./_lib/proxy.js";
+import { buildXtreamTarget, forwardHeaders, readJsonBody, sendJson } from "./_lib/proxy.js";
 
-export default async function handler(request) {
+export default async function handler(request, response) {
   if (request.method !== "POST") {
-    return json({ error: "Method not allowed." }, 405);
+    return sendJson(response, { error: "Method not allowed." }, 405);
   }
 
   try {
-    const payload = await request.json();
+    const payload = await readJsonBody(request);
     const targetUrl = buildXtreamTarget(payload);
-    const response = await fetch(targetUrl, {
+    const upstream = await fetch(targetUrl, {
       headers: forwardHeaders(request),
       redirect: "follow",
     });
-    const contentType = response.headers.get("content-type") || "";
-    const body = await response.text();
+    const contentType = upstream.headers.get("content-type") || "";
+    const body = await upstream.text();
 
-    if (!response.ok) {
-      return json({ error: body || `HTTP ${response.status}` }, response.status);
+    if (!upstream.ok) {
+      return sendJson(response, { error: body || `HTTP ${upstream.status}` }, upstream.status);
     }
 
     if (!contentType.includes("application/json")) {
-      return json({ error: "Der Xtream-Server hat keine JSON-Antwort geliefert." }, 502);
+      return sendJson(response, { error: "Der Xtream-Server hat keine JSON-Antwort geliefert." }, 502);
     }
 
-    return new Response(body, {
-      status: 200,
-      headers: {
-        "Cache-Control": "no-store, max-age=0",
-        "Content-Type": "application/json; charset=utf-8",
-      },
-    });
+    response.statusCode = 200;
+    response.setHeader("Cache-Control", "no-store, max-age=0");
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    response.end(body);
   } catch (error) {
-    return json({ error: error.message || "Xtream-Proxy fehlgeschlagen." }, 400);
+    return sendJson(response, { error: error.message || "Xtream-Proxy fehlgeschlagen." }, 400);
   }
 }

@@ -1,13 +1,13 @@
 import { createM3uItems, fetchM3uPlaylist } from "./_lib/m3u.js";
-import { json } from "./_lib/proxy.js";
+import { readJsonBody, sendJson } from "./_lib/proxy.js";
 
-export default async function handler(request) {
+export default async function handler(request, response) {
   if (request.method !== "POST") {
-    return json({ error: "Method not allowed." }, 405);
+    return sendJson(response, { error: "Method not allowed." }, 405);
   }
 
   try {
-    const payload = await request.json();
+    const payload = await readJsonBody(request);
     const playlistUrl = payload?.url || "";
     const parsed = await fetchM3uPlaylist(playlistUrl, {
       headers: {
@@ -20,7 +20,7 @@ export default async function handler(request) {
       entries: parsed.entries,
     });
 
-    return json({
+    return sendJson(response, {
       count: items.length,
       meta: {
         ...parsed.meta,
@@ -30,6 +30,6 @@ export default async function handler(request) {
       items,
     });
   } catch (error) {
-    return json({ error: error.message || "M3U-Import fehlgeschlagen." }, 400);
+    return sendJson(response, { error: error.message || "M3U-Import fehlgeschlagen." }, 400);
   }
 }

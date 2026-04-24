@@ -1,13 +1,13 @@
-import { json } from "./_lib/proxy.js";
+import { readJsonBody, sendJson } from "./_lib/proxy.js";
 import { createStbItems, stbCreateLink, stbHandshake, stbImport } from "./_lib/stb.js";
 
-export default async function handler(request) {
+export default async function handler(request, response) {
   if (request.method !== "POST") {
-    return json({ error: "Method not allowed." }, 405);
+    return sendJson(response, { error: "Method not allowed." }, 405);
   }
 
   try {
-    const payload = await request.json();
+    const payload = await readJsonBody(request);
     const mode = payload?.mode || "import";
 
     if (mode === "resolve") {
@@ -24,7 +24,7 @@ export default async function handler(request) {
         cmd: payload.cmd,
       });
 
-      return json({
+      return sendJson(response, {
         streamUrl,
       });
     }
@@ -41,11 +41,11 @@ export default async function handler(request) {
       channels: imported.channels,
     });
 
-    return json({
+    return sendJson(response, {
       count: items.length,
       items,
     });
   } catch (error) {
-    return json({ error: error.message || "STB-Import fehlgeschlagen." }, 400);
+    return sendJson(response, { error: error.message || "STB-Import fehlgeschlagen." }, 400);
   }
 }

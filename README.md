@@ -1,22 +1,23 @@
-# IPTV Mat Player v3.9
+# IPTV Mat Player v3.7 Stable Pro
 
-Neu in v3.9:
-- Smart Library mit Kategorien, Sortierung, Favoriten und zuletzt geoeffnet
-- TV Guide fuer Jetzt, Prime Time und Spaetprogramm
-- stärkerer Account-Bereich
-- robusterer Xtream-Import mit Kategoriemapping und Serienaufloesung
-- gespeicherte Serverprofile und Privacy Mode
-- Mobile UX und Vercel-freundlicher Proxy
-- Login, Session und HLS-Player bleiben erhalten
+Erweitert und stabilisiert:
+- vorhandene Funktionen aus v3.6 weiter verbessert
+- Import stabiler mit Teilimport, besseren Fehlern und höherem Limit
+- Player mit Media-Recovery bei HLS-Fehlern
+- Player wird beim Streamwechsel sauber zurückgesetzt
+- Wiedergabe-Ende setzt Fortschritt auf 100 %
+- A–Z / Fortschritt-Sortierung
+- App/Demo-Reset
+- Watchlist / Continue Watching stabilisiert
+- Cover-Fallbacks stabilisiert
+- Vercel-ready
 
-## Start
-```bash
+## Lokal
 npm install
 npm run dev
-```
 
 ## Vercel
-- Build Command: npm run build
-- Output Directory: dist
+Build Command: npm run build
+Output Directory: dist
 
 Nur für eigene oder autorisierte Zugänge gedacht.

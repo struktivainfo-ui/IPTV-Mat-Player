@@ -98,18 +98,78 @@ export function isMixedContentRisk(url) {
   return window.location.protocol === "https:" && String(url).startsWith("http://");
 }
 
+function detectStreamExtension(url) {
+  const normalized = String(url || "").toLowerCase();
+
+  if (normalized.includes(".m3u8") || normalized.includes("output=m3u8")) {
+    return "m3u8";
+  }
+
+  if (normalized.includes(".ts") || normalized.includes("output=ts")) {
+    return "ts";
+  }
+
+  if (normalized.includes(".mp4")) {
+    return "mp4";
+  }
+
+  return "";
+}
+
+export function preferWebPlaybackUrl(url, item = null) {
+  const raw = String(url || "").trim();
+
+  if (!raw) {
+    return "";
+  }
+
+  const section = item?.section || item?.streamType || "";
+  const extension = detectStreamExtension(raw);
+
+  if (section !== "live" || extension !== "ts") {
+    return raw;
+  }
+
+  try {
+    const nextUrl = new URL(raw);
+
+    if (nextUrl.searchParams.get("output") === "ts") {
+      nextUrl.searchParams.set("output", "m3u8");
+      return nextUrl.toString();
+    }
+
+    if (nextUrl.pathname.endsWith(".ts")) {
+      nextUrl.pathname = nextUrl.pathname.replace(/\.ts$/i, ".m3u8");
+      return nextUrl.toString();
+    }
+  } catch {
+    if (raw.includes("output=ts")) {
+      return raw.replace(/output=ts/gi, "output=m3u8");
+    }
+
+    if (/\.ts(\?|$)/i.test(raw)) {
+      return raw.replace(/\.ts(\?|$)/i, ".m3u8$1");
+    }
+  }
+
+  return raw;
+}
+
 export function buildDirectStreamUrl(item) {
   if (!item) {
     return "";
   }
 
   if (item.streamUrl) {
-    return item.streamUrl;
+    return preferWebPlaybackUrl(item.streamUrl, item);
   }
 
   if (item.server && item.username && item.password && item.streamId && item.streamType) {
     if (item.streamType === "live") {
-      return buildLiveUrl(item.server, item.username, item.password, item.streamId, item.streamExt || "m3u8");
+      return preferWebPlaybackUrl(
+        buildLiveUrl(item.server, item.username, item.password, item.streamId, item.streamExt || "m3u8"),
+        item
+      );
     }
 
     if (item.streamType === "movie") {
@@ -298,6 +358,10 @@ export function explainNetworkError(error, connectionMode = "auto") {
 
   if (/JSON-Antwort/i.test(message)) {
     return "Der Server hat keine gueltigen Xtream-Daten geliefert.";
+  }
+
+  if (/HLS-Stream konnte nicht geladen werden|Video-Element konnte den Stream nicht abspielen/i.test(message)) {
+    return "Der Sender liefert vermutlich ein Browser-ungeeignetes TS-Format. Ich versuche bereits bevorzugt m3u8, aber manche Anbieter blockieren Web-Playback.";
   }
 
   return message;

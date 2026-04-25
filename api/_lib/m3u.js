@@ -27,6 +27,24 @@ function detectSection(groupTitle = "", title = "") {
   return "live";
 }
 
+function detectStreamExt(url) {
+  const normalized = String(url || "").toLowerCase();
+
+  if (normalized.includes(".m3u8") || normalized.includes("output=m3u8")) {
+    return "m3u8";
+  }
+
+  if (normalized.includes(".ts") || normalized.includes("output=ts")) {
+    return "ts";
+  }
+
+  if (normalized.includes(".mp4")) {
+    return "mp4";
+  }
+
+  return "mp4";
+}
+
 export function parseM3uPlaylist(body) {
   const lines = String(body || "")
     .split(/\r?\n/)
@@ -146,7 +164,7 @@ export function createM3uItems({ playlistUrl, entries }) {
       progress: (index * 3) % 100,
       description: `Importiert aus einer M3U-Playlist${entry.epgId ? ` mit EPG-ID ${entry.epgId}` : ""}.`,
       streamUrl: normalizedUrl,
-      streamExt: normalizedUrl.toLowerCase().includes(".m3u8") ? "m3u8" : "mp4",
+      streamExt: detectStreamExt(normalizedUrl),
       streamType: section,
       sourceType: "m3u",
       sourceUrl: playlistUrl,

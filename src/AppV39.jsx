@@ -289,6 +289,14 @@ function createM3uItemsFromText(text, playlistUrl = "m3u-text://local") {
 
     seen.add(signature);
     const section = detectM3uSection(entry.category, entry.title);
+    const lowerUrl = normalizedUrl.toLowerCase();
+    const streamExt = lowerUrl.includes(".m3u8") || lowerUrl.includes("output=m3u8")
+      ? "m3u8"
+      : lowerUrl.includes(".ts") || lowerUrl.includes("output=ts")
+        ? "ts"
+        : lowerUrl.includes(".mp4")
+          ? "mp4"
+          : "mp4";
 
     accumulator.push({
       id: `m3u-${index}-${entry.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
@@ -302,7 +310,7 @@ function createM3uItemsFromText(text, playlistUrl = "m3u-text://local") {
       progress: (index * 3) % 100,
       description: `Importiert aus einer M3U-Playlist${entry.epgId ? ` mit EPG-ID ${entry.epgId}` : ""}.`,
       streamUrl: normalizedUrl,
-      streamExt: normalizedUrl.toLowerCase().includes(".m3u8") ? "m3u8" : "mp4",
+      streamExt,
       streamType: section,
       sourceType: "m3u",
       sourceUrl: playlistUrl,

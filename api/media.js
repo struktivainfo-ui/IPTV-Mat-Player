@@ -1,7 +1,13 @@
 import { ensureSafeUrl, forwardHeaders, sendText, text, rewritePlaylist } from "./_lib/proxy.js";
 
 function isPlaylist(targetUrl, contentType) {
-  return targetUrl.pathname.endsWith(".m3u8") || /mpegurl|x-mpegurl/i.test(contentType || "");
+  const normalized = targetUrl.toString().toLowerCase();
+
+  return (
+    targetUrl.pathname.endsWith(".m3u8") ||
+    normalized.includes("output=m3u8") ||
+    /mpegurl|x-mpegurl/i.test(contentType || "")
+  );
 }
 
 export default async function handler(request, response) {

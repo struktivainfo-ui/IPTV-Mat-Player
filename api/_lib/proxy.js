@@ -92,12 +92,19 @@ function getHeaderValue(request, name) {
 export function forwardHeaders(request) {
   const headers = new Headers();
 
-  ["accept", "range", "user-agent"].forEach((name) => {
+  ["accept", "range", "user-agent", "origin", "referer"].forEach((name) => {
     const value = getHeaderValue(request, name);
     if (value) {
       headers.set(name, value);
     }
   });
+
+  if (!headers.get("user-agent")) {
+    headers.set(
+      "User-Agent",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+    );
+  }
 
   return headers;
 }

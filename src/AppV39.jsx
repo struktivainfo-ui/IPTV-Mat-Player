@@ -319,6 +319,11 @@ function createM3uItemsFromText(text, playlistUrl = "m3u-text://local") {
   return { items, meta };
 }
 
+function isManualM3uInput(value) {
+  const text = String(value || "").trim();
+  return text.includes("#EXTM3U") || text.includes("#EXTINF");
+}
+
 function buildImportSummary(label, count, invalidCount = 0, duplicateCount = 0) {
   const parts = [`${count} ${label} importiert.`];
 
@@ -930,7 +935,7 @@ export default function AppV39() {
   const [qualityOptions, setQualityOptions] = useState([{ value: -1, label: "Auto" }]);
   const [selectedQuality, setSelectedQuality] = useState(-1);
   const [auth, setAuth] = useState(() => readAuth(readSettings()));
-  const [m3uTextInput, setM3uTextInput] = useState(() => load("m3uTextInput", ""));
+  const [m3uTextInput, setM3uTextInput] = useState(() => load("m3uInput", load("m3uTextInput", "")));
   const [savedServers, setSavedServers] = useState(() => (Array.isArray(load("savedServers", [])) ? load("savedServers", []) : []));
   const [newServerName, setNewServerName] = useState("");
   const [importCount, setImportCount] = useState(() => load("importCount", 0));
@@ -1104,6 +1109,11 @@ export default function AppV39() {
     setAuth(nextAuth);
   }
 
+  function persistM3uInput(value) {
+    setM3uTextInput(value);
+    save("m3uInput", value);
+  }
+
   function applyImportedM3u(itemsToImport, sourceLabel, detectedEpgUrl = "", mode = "replace") {
     const nextEpgUrl = detectedEpgUrl || auth.epgUrl || "";
     const mapped = safeTop(itemsToImport || [], 400).map((item) => ({
@@ -1236,11 +1246,17 @@ export default function AppV39() {
 
   function requireAuthFields() {
     if (auth.sourceType === "m3u") {
-      if (!auth.m3uUrl) {
-        return "Bitte die M3U-Playlist-URL eintragen.";
+      const m3uInput = m3uTextInput.trim();
+
+      if (!m3uInput) {
+        return "Bitte eine M3U-URL oder eine komplette M3U-Liste einfuegen.";
       }
 
-      return isValidHttpUrl(auth.m3uUrl) ? "" : "Bitte eine gueltige M3U-URL mit http oder https verwenden.";
+      if (isManualM3uInput(m3uInput)) {
+        return "";
+      }
+
+      return isValidHttpUrl(m3uInput) ? "" : "Bitte eine gueltige M3U-URL oder eine komplette M3U-Liste verwenden.";
     }
 
     if (auth.sourceType === "stbemu") {
@@ -1912,10 +1928,24 @@ export default function AppV39() {
 
     try {
       if (auth.sourceType === "m3u") {
-        setStatus("M3U-Playlist wird geladen ...");
+        const m3uInput = m3uTextInput.trim();
+
+        if (isManualM3uInput(m3uInput)) {
+          setStatus("Manuelle M3U wird geladen ...");
+          const parsed = createM3uItemsFromText(m3uInput);
+
+          if (!parsed.items.length) {
+            throw new Error("Keine M3U-Eintraege in der eingefuegten Liste gefunden.");
+          }
+
+          applyImportedM3u(parsed.items, "M3U-Eintraege", parsed.meta?.epgUrl || "");
+          return;
+        }
+
+        setStatus("M3U wird geladen ...");
 
         const payload = await postJson("/api/m3u", {
-          url: auth.m3uUrl,
+          url: m3uInput,
         });
         const detectedEpgUrl = payload?.meta?.epgUrl || auth.epgUrl || "";
         const mapped = safeTop(payload?.items || [], 200).map((item) => ({
@@ -1926,7 +1956,7 @@ export default function AppV39() {
         }));
 
         if (detectedEpgUrl !== auth.epgUrl) {
-          persistAuth({ ...auth, epgUrl: detectedEpgUrl });
+          persistAuth({ ...auth, m3uUrl: m3uInput, epgUrl: detectedEpgUrl });
         }
 
         applyImportedLibrary(
@@ -2038,45 +2068,26 @@ export default function AppV39() {
     }
   }
 
-  function handleImportM3uText() {
-    try {
-      if (!m3uTextInput.trim()) {
-        setStatus("Bitte M3U-Text einfuegen.");
-        return;
-      }
-
-      setStatus("M3U-Text wird verarbeitet ...");
-      save("m3uTextInput", m3uTextInput);
-      const parsed = createM3uItemsFromText(m3uTextInput);
-
-      if (!parsed.items.length) {
-        throw new Error("Keine M3U-Eintraege im eingefuegten Text gefunden.");
-      }
-
-      applyImportedM3u(parsed.items, "M3U-Text", parsed.meta?.epgUrl || "");
-    } catch (error) {
-      setStatus(error?.message || "M3U-Text konnte nicht importiert werden.");
-    }
-  }
-
   function handleMergeM3uText() {
     try {
-      if (!m3uTextInput.trim()) {
-        setStatus("Bitte M3U-Text einfuegen.");
+      const m3uInput = m3uTextInput.trim();
+
+      if (!isManualM3uInput(m3uInput)) {
+        setStatus("Zum Ergaenzen bitte eine komplette M3U-Liste einfuegen.");
         return;
       }
 
-      setStatus("M3U-Text wird zur Bibliothek hinzugefuegt ...");
-      save("m3uTextInput", m3uTextInput);
-      const parsed = createM3uItemsFromText(m3uTextInput);
+      setStatus("Manuelle M3U wird zur Bibliothek hinzugefuegt ...");
+      save("m3uInput", m3uInput);
+      const parsed = createM3uItemsFromText(m3uInput);
 
       if (!parsed.items.length) {
-        throw new Error("Keine M3U-Eintraege im eingefuegten Text gefunden.");
+        throw new Error("Keine M3U-Eintraege in der eingefuegten Liste gefunden.");
       }
 
-      applyImportedM3u(parsed.items, "M3U-Text", parsed.meta?.epgUrl || "", "merge");
+      applyImportedM3u(parsed.items, "M3U-Eintraege", parsed.meta?.epgUrl || "", "merge");
     } catch (error) {
-      setStatus(error?.message || "M3U-Text konnte nicht ergaenzt werden.");
+      setStatus(error?.message || "M3U konnte nicht ergaenzt werden.");
     }
   }
 
@@ -2090,8 +2101,7 @@ export default function AppV39() {
     try {
       setStatus(`Datei wird gelesen: ${file.name}`);
       const text = await file.text();
-      setM3uTextInput(text);
-      save("m3uTextInput", text);
+      persistM3uInput(text);
       const parsed = createM3uItemsFromText(text, `m3u-file://${file.name}`);
 
       if (!parsed.items.length) {
@@ -2107,7 +2117,12 @@ export default function AppV39() {
   }
 
   function handleSaveServer() {
-    const identifier = auth.sourceType === "m3u" ? auth.m3uUrl : auth.sourceType === "stbemu" ? auth.portalUrl : auth.server;
+    const identifier =
+      auth.sourceType === "m3u"
+        ? (isValidHttpUrl(m3uTextInput.trim()) ? m3uTextInput.trim() : "Manuelle M3U-Liste")
+        : auth.sourceType === "stbemu"
+          ? auth.portalUrl
+          : auth.server;
     const trimmedName = newServerName.trim() || String(identifier || "").trim();
     const validationMessage = requireAuthFields();
 
@@ -2124,7 +2139,7 @@ export default function AppV39() {
         server: auth.server,
         username: auth.username,
         password: settings.savePasswords ? auth.password : "",
-        m3uUrl: auth.m3uUrl,
+        m3uUrl: isValidHttpUrl(m3uTextInput.trim()) ? m3uTextInput.trim() : "",
         portalUrl: auth.portalUrl,
         macAddress: auth.macAddress,
         epgUrl: auth.epgUrl,
@@ -2821,23 +2836,17 @@ export default function AppV39() {
               ) : null}
               {auth.sourceType === "m3u" ? (
                 <>
-                  <input
-                    placeholder="M3U-Playlist-URL"
-                    value={auth.m3uUrl}
-                    onChange={(event) => persistAuth({ ...auth, m3uUrl: event.target.value })}
-                  />
                   <textarea
-                    placeholder="Oder M3U-Text direkt hier einfuegen ..."
+                    placeholder="M3U-URL oder komplette M3U-Liste hier einfuegen ..."
                     value={m3uTextInput}
                     onChange={(event) => {
-                      setM3uTextInput(event.target.value);
-                      save("m3uTextInput", event.target.value);
+                      persistM3uInput(event.target.value);
                     }}
                     rows={7}
                   />
                   <input type="file" accept=".m3u,.m3u8,.txt,text/plain,audio/x-mpegurl,application/vnd.apple.mpegurl" onChange={handleImportM3uFile} />
                   <div className="infoPanel inputHint">
-                    <span>Du kannst M3U per URL, eingefuegtem Text oder lokaler Datei laden.</span>
+                    <span>Füge eine M3U-URL oder direkt deine ganze Liste ein und drücke dann Laden.</span>
                   </div>
                 </>
               ) : null}
@@ -2866,20 +2875,11 @@ export default function AppV39() {
             </div>
             <div className="actions">
               <button className="primary" onClick={handleImport}>
-                {auth.sourceType === "xtream"
-                  ? "Xtream importieren"
-                  : auth.sourceType === "m3u"
-                    ? "M3U importieren"
-                    : "STBEmu importieren"}
+                Laden
               </button>
               {auth.sourceType === "m3u" ? (
-                <button className="secondary" onClick={handleImportM3uText}>
-                  M3U-Text importieren
-                </button>
-              ) : null}
-              {auth.sourceType === "m3u" ? (
                 <button className="secondary" onClick={handleMergeM3uText}>
-                  M3U-Text ergaenzen
+                  M3U ergaenzen
                 </button>
               ) : null}
               <button className="secondary" onClick={resetDemo}>

@@ -537,6 +537,7 @@ function PlayerView({
   item,
   url,
   isHls,
+  isTs,
   autoplay,
   onProgress,
   onStatus,
@@ -550,6 +551,7 @@ function PlayerView({
 }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
+  const mpegTsRef = useRef(null);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef(null);
   const playbackTimeoutRef = useRef(null);
@@ -610,6 +612,10 @@ function PlayerView({
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
+      }
+      if (mpegTsRef.current) {
+        mpegTsRef.current.destroy();
+        mpegTsRef.current = null;
       }
       video.pause();
       video.removeAttribute("src");
@@ -757,6 +763,41 @@ function PlayerView({
         return;
       }
 
+      if (isTs) {
+        const module = await import("mpegts.js");
+        const mpegts = module.default || module;
+
+        if (cancelled) {
+          return;
+        }
+
+        if (mpegts.getFeatureList?.().mseLivePlayback && mpegts.isSupported?.()) {
+          const player = mpegts.createPlayer(
+            {
+              type: "mpegts",
+              isLive: true,
+              url,
+            },
+            {
+              enableWorker: true,
+              lazyLoad: false,
+              liveBufferLatencyChasing: true,
+            }
+          );
+          mpegTsRef.current = player;
+          player.attachMediaElement(video);
+          player.load();
+          if (autoplay) {
+            player.play().catch(() => {});
+          }
+          onQualitiesChangeRef.current?.([{ value: -1, label: "Live" }]);
+          return;
+        }
+
+        fail("Dieser Browser kann den TS-Livestream nicht direkt wiedergeben.");
+        return;
+      }
+
       onQualitiesChangeRef.current?.([]);
       video.src = url;
       video.load();
@@ -775,7 +816,7 @@ function PlayerView({
       video.removeEventListener("error", handleError);
       cleanup();
     };
-  }, [autoplay, isHls, isPreparing, item?.title, reloadToken, retryEnabled, url]);
+  }, [autoplay, isHls, isPreparing, isTs, item?.title, reloadToken, retryEnabled, url]);
 
   return (
     <div className="playerShell">
@@ -981,6 +1022,15 @@ export default function AppV39() {
     () => Boolean(selected && (isLikelyHlsUrl(playbackUrl, selected) || isLikelyHlsUrl(selected.streamUrl, selected))),
     [playbackUrl, selected]
   );
+  const isSelectedTs = useMemo(() => {
+    if (!selected) {
+      return false;
+    }
+
+    const itemExt = String(selected.streamExt || "").toLowerCase();
+    const raw = `${String(playbackUrl || "")} ${String(selected.streamUrl || "")}`.toLowerCase();
+    return itemExt === "ts" || raw.includes(".ts") || raw.includes("output=ts");
+  }, [playbackUrl, selected]);
   const connectionLabel = useMemo(
     () => describeConnectionMode(selected, settings.connectionMode),
     [selected, settings.connectionMode]
@@ -2340,6 +2390,7 @@ export default function AppV39() {
                 item={selected}
                 url={playbackUrl}
                 isHls={isSelectedHls}
+                isTs={isSelectedTs}
                 autoplay={settings.autoplay}
                 onProgress={handleProgress}
                 onStatus={setStatus}
@@ -2632,11 +2683,12 @@ export default function AppV39() {
               </div>
             </div>
           </div>
-          <PlayerView
-            item={selected}
-            url={playbackUrl}
-            isHls={isSelectedHls}
-            autoplay={false}
+              <PlayerView
+                item={selected}
+                url={playbackUrl}
+                isHls={isSelectedHls}
+                isTs={isSelectedTs}
+                autoplay={false}
             onProgress={handleProgress}
             onStatus={setStatus}
             connectionLabel={connectionLabel}

@@ -1918,8 +1918,17 @@ export default function AppV39() {
     seriesItems,
   ]);
 
-  async function handleImport() {
-    const validationMessage = requireAuthFields();
+  async function handleImport(authOverride = auth, m3uInputOverride = m3uTextInput) {
+    const currentAuth = authOverride || auth;
+    const currentM3uInput = String(m3uInputOverride || "").trim();
+    const validationMessage =
+      currentAuth.sourceType === "m3u"
+        ? !currentM3uInput
+          ? "Bitte eine M3U-URL oder eine komplette M3U-Liste einfuegen."
+          : isManualM3uInput(currentM3uInput) || isValidHttpUrl(currentM3uInput)
+            ? ""
+            : "Bitte eine gueltige M3U-URL oder eine komplette M3U-Liste verwenden."
+        : requireAuthFields();
 
     if (validationMessage) {
       setStatus(validationMessage);
@@ -1927,12 +1936,10 @@ export default function AppV39() {
     }
 
     try {
-      if (auth.sourceType === "m3u") {
-        const m3uInput = m3uTextInput.trim();
-
-        if (isManualM3uInput(m3uInput)) {
+      if (currentAuth.sourceType === "m3u") {
+        if (isManualM3uInput(currentM3uInput)) {
           setStatus("Manuelle M3U wird geladen ...");
-          const parsed = createM3uItemsFromText(m3uInput);
+          const parsed = createM3uItemsFromText(currentM3uInput);
 
           if (!parsed.items.length) {
             throw new Error("Keine M3U-Eintraege in der eingefuegten Liste gefunden.");
@@ -1945,9 +1952,9 @@ export default function AppV39() {
         setStatus("M3U wird geladen ...");
 
         const payload = await postJson("/api/m3u", {
-          url: m3uInput,
+          url: currentM3uInput,
         });
-        const detectedEpgUrl = payload?.meta?.epgUrl || auth.epgUrl || "";
+        const detectedEpgUrl = payload?.meta?.epgUrl || currentAuth.epgUrl || "";
         const mapped = safeTop(payload?.items || [], 200).map((item) => ({
           ...item,
           cover: item.cover || getFallbackCover(item),
@@ -1955,8 +1962,8 @@ export default function AppV39() {
           importedAt: Date.now(),
         }));
 
-        if (detectedEpgUrl !== auth.epgUrl) {
-          persistAuth({ ...auth, m3uUrl: m3uInput, epgUrl: detectedEpgUrl });
+        if (detectedEpgUrl !== currentAuth.epgUrl) {
+          persistAuth({ ...currentAuth, m3uUrl: currentM3uInput, epgUrl: detectedEpgUrl });
         }
 
         applyImportedLibrary(
@@ -1967,18 +1974,18 @@ export default function AppV39() {
         return;
       }
 
-      if (auth.sourceType === "stbemu") {
+      if (currentAuth.sourceType === "stbemu") {
         setStatus("STBEmu-Portal wird geladen ...");
 
         const payload = await postJson("/api/stb", {
           mode: "import",
-          portalUrl: auth.portalUrl,
-          macAddress: auth.macAddress,
+          portalUrl: currentAuth.portalUrl,
+          macAddress: currentAuth.macAddress,
         });
         const mapped = safeTop(payload?.items || [], 160).map((item) => ({
           ...item,
           cover: item.cover || getFallbackCover(item),
-          epgSourceUrl: auth.epgUrl || "",
+          epgSourceUrl: currentAuth.epgUrl || "",
           importedAt: Date.now(),
         }));
 
@@ -1994,44 +2001,44 @@ export default function AppV39() {
 
       const [live, vod, series, liveCategories, movieCategories, seriesCategories] = await Promise.all([
         fetchXtreamJson({
-          server: auth.server,
-          username: auth.username,
-          password: auth.password,
+          server: currentAuth.server,
+          username: currentAuth.username,
+          password: currentAuth.password,
           action: "get_live_streams",
           mode: settings.connectionMode,
         }),
         fetchXtreamJson({
-          server: auth.server,
-          username: auth.username,
-          password: auth.password,
+          server: currentAuth.server,
+          username: currentAuth.username,
+          password: currentAuth.password,
           action: "get_vod_streams",
           mode: settings.connectionMode,
         }),
         fetchXtreamJson({
-          server: auth.server,
-          username: auth.username,
-          password: auth.password,
+          server: currentAuth.server,
+          username: currentAuth.username,
+          password: currentAuth.password,
           action: "get_series",
           mode: settings.connectionMode,
         }),
         fetchXtreamJson({
-          server: auth.server,
-          username: auth.username,
-          password: auth.password,
+          server: currentAuth.server,
+          username: currentAuth.username,
+          password: currentAuth.password,
           action: CATEGORY_ACTIONS.live,
           mode: settings.connectionMode,
         }),
         fetchXtreamJson({
-          server: auth.server,
-          username: auth.username,
-          password: auth.password,
+          server: currentAuth.server,
+          username: currentAuth.username,
+          password: currentAuth.password,
           action: CATEGORY_ACTIONS.movie,
           mode: settings.connectionMode,
         }),
         fetchXtreamJson({
-          server: auth.server,
-          username: auth.username,
-          password: auth.password,
+          server: currentAuth.server,
+          username: currentAuth.username,
+          password: currentAuth.password,
           action: CATEGORY_ACTIONS.series,
           mode: settings.connectionMode,
         }),
@@ -2045,17 +2052,17 @@ export default function AppV39() {
 
       const mapped = [
         ...safeTop(live, 80).map((entry, index) =>
-          createImportedItem("live", entry, index, auth, nextCategoryMaps, DEMO_ITEMS_V39[0].cover)
+          createImportedItem("live", entry, index, currentAuth, nextCategoryMaps, DEMO_ITEMS_V39[0].cover)
         ),
         ...safeTop(vod, 80).map((entry, index) =>
-          createImportedItem("movie", entry, index, auth, nextCategoryMaps, DEMO_ITEMS_V39[2].cover)
+          createImportedItem("movie", entry, index, currentAuth, nextCategoryMaps, DEMO_ITEMS_V39[2].cover)
         ),
         ...safeTop(series, 80).map((entry, index) =>
-          createImportedItem("series", entry, index, auth, nextCategoryMaps, DEMO_ITEMS_V39[4].cover)
+          createImportedItem("series", entry, index, currentAuth, nextCategoryMaps, DEMO_ITEMS_V39[4].cover)
         ),
       ].map((item) => ({
         ...item,
-        epgSourceUrl: auth.epgUrl || item.epgSourceUrl || "",
+        epgSourceUrl: currentAuth.epgUrl || item.epgSourceUrl || "",
       }));
 
       applyImportedLibrary(
@@ -2153,7 +2160,7 @@ export default function AppV39() {
     setStatus(`Serverprofil gespeichert: ${trimmedName}`);
   }
 
-  function applySavedServer(server) {
+  async function applySavedServer(server) {
     const nextAuth = {
       sourceType: server.sourceType || "xtream",
       server: server.server || "",
@@ -2165,7 +2172,9 @@ export default function AppV39() {
       epgUrl: server.epgUrl || "",
     };
     persistAuth(nextAuth);
-    setStatus(`Serverprofil geladen: ${server.name}`);
+    persistM3uInput(server.sourceType === "m3u" ? server.m3uUrl || "" : "");
+    setStatus(`Serverprofil wird geladen: ${server.name}`);
+    await handleImport(nextAuth, server.sourceType === "m3u" ? server.m3uUrl || "" : "");
   }
 
   function removeSavedServer(serverId) {

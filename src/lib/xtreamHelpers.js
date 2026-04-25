@@ -174,15 +174,12 @@ export function buildDirectStreamUrl(item) {
   }
 
   if (item.streamUrl) {
-    return preferWebPlaybackUrl(item.streamUrl, item);
+    return String(item.streamUrl).trim();
   }
 
   if (item.server && item.username && item.password && item.streamId && item.streamType) {
     if (item.streamType === "live") {
-      return preferWebPlaybackUrl(
-        buildLiveUrl(item.server, item.username, item.password, item.streamId, item.streamExt || "m3u8"),
-        item
-      );
+      return buildLiveUrl(item.server, item.username, item.password, item.streamId, item.streamExt || "m3u8");
     }
 
     if (item.streamType === "movie") {

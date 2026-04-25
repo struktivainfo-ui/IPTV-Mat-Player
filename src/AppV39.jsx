@@ -774,17 +774,29 @@ function PlayerView({
         if (mpegts.getFeatureList?.().mseLivePlayback && mpegts.isSupported?.()) {
           const player = mpegts.createPlayer(
             {
-              type: "mpegts",
+              type: "mse",
               isLive: true,
+              cors: true,
               url,
             },
             {
               enableWorker: true,
+              enableStashBuffer: false,
               lazyLoad: false,
               liveBufferLatencyChasing: true,
+              liveSync: true,
+              liveSyncMaxLatency: 2,
+              liveSyncTargetLatency: 1,
             }
           );
           mpegTsRef.current = player;
+          player.on?.(mpegts.Events.ERROR, (errorType, errorDetail, errorInfo) => {
+            const detailText = [errorType, errorDetail, errorInfo?.msg || errorInfo?.code || errorInfo]
+              .filter(Boolean)
+              .join(" | ");
+
+            fail(detailText ? `TS-Livestream Fehler: ${detailText}` : "Der TS-Livestream konnte nicht geladen werden.");
+          });
           player.attachMediaElement(video);
           player.load();
           if (autoplay) {

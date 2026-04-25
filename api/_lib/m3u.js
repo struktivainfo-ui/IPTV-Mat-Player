@@ -96,6 +96,12 @@ export async function fetchM3uPlaylist(targetUrl, requestInit = {}) {
     });
     body = await response.text();
   } catch (error) {
+    const errorCode = error?.cause?.code || error?.code || "";
+
+    if (/ENOTFOUND|EAI_AGAIN/i.test(String(errorCode))) {
+      throw new Error(`Die Playlist-Domain wurde nicht gefunden: ${safeUrl.hostname}`);
+    }
+
     throw new Error("Die Playlist-URL konnte vom Server nicht geladen werden.");
   }
 

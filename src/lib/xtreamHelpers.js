@@ -116,6 +116,19 @@ function detectStreamExtension(url) {
   return "";
 }
 
+export function isLikelyHlsUrl(url, item = null) {
+  const raw = String(url || "").toLowerCase();
+  const itemExt = String(item?.streamExt || "").toLowerCase();
+
+  return (
+    itemExt === "m3u8" ||
+    raw.includes(".m3u8") ||
+    raw.includes("output=m3u8") ||
+    raw.includes("application/vnd.apple.mpegurl") ||
+    raw.includes("mpegurl")
+  );
+}
+
 export function preferWebPlaybackUrl(url, item = null) {
   const raw = String(url || "").trim();
 

@@ -23,6 +23,7 @@ import {
   explainNetworkError,
   fetchJsonWithTimeout,
   fetchXtreamJson,
+  isLikelyHlsUrl,
   pickFirstSeriesEpisode,
   resolvePlaybackUrl,
   safeTop,
@@ -977,12 +978,7 @@ export default function AppV39() {
   );
   const playbackUrl = resolvedPlaybackUrl;
   const isSelectedHls = useMemo(
-    () =>
-      Boolean(
-        selected &&
-          (String(playbackUrl || "").toLowerCase().includes(".m3u8") ||
-            String(selected.streamUrl || "").toLowerCase().includes(".m3u8"))
-      ),
+    () => Boolean(selected && (isLikelyHlsUrl(playbackUrl, selected) || isLikelyHlsUrl(selected.streamUrl, selected))),
     [playbackUrl, selected]
   );
   const connectionLabel = useMemo(

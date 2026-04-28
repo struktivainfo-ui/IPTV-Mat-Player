@@ -1,0 +1,21 @@
+{
+  "version": "v6.6 Profiles and Diagnostics",
+  "base": "iptv-mat-player-v4.8-ux-stability-pro-render-github.zip",
+  "frontend_checks": {
+    "React mount": true,
+    "Smart View": true,
+    "Final Audit Panel": true,
+    "Program Guide": true,
+    "EPG": true,
+    "Auto Zapping": true
+  },
+  "backend_checks": {
+    "Health": true,
+    "Client Config": true,
+    "Smart History": true,
+    "Recordings": true,
+    "MAC Profiles": true,
+    "Import Proxy": true
+  },
+  "warnings": []
+}

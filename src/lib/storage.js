@@ -1,35 +1,14 @@
-const PREFIX = "iptv_mat_player_";
-const LEGACY_PREFIX = "iptv_mobile_v3_4_";
+const PREFIX = "iptv_mat_v42_";
 
-function readRaw(key) {
-  const primary = localStorage.getItem(PREFIX + key);
-  if (primary !== null) {
-    return primary;
-  }
-
-  return localStorage.getItem(LEGACY_PREFIX + key);
-}
-
-export function load(key, fallback) {
+export function load(key, fallbackValue) {
   try {
-    const raw = readRaw(key);
-    return raw ? JSON.parse(raw) : fallback;
+    const rawValue = localStorage.getItem(`${PREFIX}${key}`);
+    return rawValue ? JSON.parse(rawValue) : fallbackValue;
   } catch {
-    localStorage.removeItem(PREFIX + key);
-    localStorage.removeItem(LEGACY_PREFIX + key);
-    return fallback;
+    return fallbackValue;
   }
 }
 
 export function save(key, value) {
-  try {
-    localStorage.setItem(PREFIX + key, JSON.stringify(value));
-  } catch {
-    // Ignore quota and serialization issues to keep the app responsive.
-  }
-}
-
-export function remove(key) {
-  localStorage.removeItem(PREFIX + key);
-  localStorage.removeItem(LEGACY_PREFIX + key);
+  localStorage.setItem(`${PREFIX}${key}`, JSON.stringify(value));
 }

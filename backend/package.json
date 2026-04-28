@@ -1,0 +1,13 @@
+{
+  "name": "iptv-mat-backend-v2-4-final-audit",
+  "version": "2.5.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.3",
+    "cors": "^2.8.5"
+  }
+}

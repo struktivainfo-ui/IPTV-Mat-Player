@@ -1,29 +1,39 @@
-# IPTV Mat Player v5.4 Merged Pro
+# IPTV Mat Fullstack v6.6 Profiles and Diagnostics
 
-Diese Hauptversion fuehrt die Inhalte aus den alten ZIP-Staenden `v4.2`, `v4.3` und `v4.4` in den aktuellen Player ein und nutzt dabei die moderne App-Basis aus `AppV39`.
+Gepruefte Fullstack-Version mit:
+- sauberem Frontend-Refactor
+- Quellprofilen fuer Xtream und M3U
+- Stream-Diagnose fuer den Player
+- Backend-Proxy fuer Xtream und M3U
 
-Enthalten sind jetzt in einer Linie:
-- Sky-aehnliche Startseite mit getrennten Bereichen fuer `Live`, `VOD` und `Serien`
-- Xtream-, M3U- und STBEmu-Import
-- Proxy-faehige Vercel-API fuer Import, EPG und Playback
-- EPG-Guide, Guide-Sync und Guide-Headline
-- Watchlist, Continue Watching und Verlauf
-- Systemcheck, Reliability Center und Status-Panel
-- Bouquet-, Profil-, PIN- und Kids-Mode-Funktionen
-- DVR-/Recorder-Vorbereitung und geplante Aufnahmen
-- Android-/APK-Basis ueber Capacitor
+## Frontend
+- Hosting: Vercel
+- Root: `frontend`
+- Build: `npm run build`
+- Output: `dist`
+- lokale Datei:
+  - `frontend/.env` nur lokal benutzen, nicht zu GitHub pushen
+- Env in Vercel:
+  - `VITE_BACKEND_URL=https://DEIN-RENDER-BACKEND.onrender.com`
 
-Merge-Hinweis:
-Die ZIP-Versionen `v4.2`, `v4.3` und `v4.4` waren kleinere Einzelstaende. Ihr Funktionsumfang wurde nicht blind kopiert, sondern in den aktuellen Hauptplayer uebernommen und mit dem neueren `v5.x`-Stand zusammengefuehrt. Der aktive Einstieg zeigt jetzt auf die moderne App statt auf die alte `v3.7`-Ein-Datei-Version.
+## Backend
+- Hosting: Render
+- Root: `backend`
+- Start: `npm start`
+- Healthcheck: `/api/health`
 
-## Lokal
-`npm install`
+## Render
+- Render Blueprint im Projektwurzelordner:
+  - [render.yaml](</C:/Users/matzk/OneDrive/Desktop/salon-karola-v7-2-render-menu-fix/zip-audit-v6.4/render.yaml>)
 
-`npm run build`
+## Deployment-Reihenfolge
+1. Backend auf Render deployen
+2. Render-URL kopieren
+3. `VITE_BACKEND_URL` in Vercel setzen
+4. Frontend in Vercel neu deployen
 
-## Vercel
-Build Command: `npm run build`
-
-Output Directory: `dist`
-
-Nur fuer eigene oder autorisierte Zugaenge gedacht.
+## GitHub-Struktur
+- `frontend/` fuer die Vercel-App
+- `backend/` fuer den Render-Service
+- `render.yaml` im Projektwurzelordner fuer Render Blueprint
+- `.gitignore` blendet `node_modules`, `dist` und lokale `.env` Dateien aus

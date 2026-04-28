@@ -91,13 +91,14 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
 
     (async () => {
       if (preferTs || src.toLowerCase().includes(".ts") || src.toLowerCase().includes("output=ts") || src.toLowerCase().includes("fmt=ts")) {
-        const mpegts = await import("mpegts.js");
+        const mpegtsModule = await import("mpegts.js");
+        const mpegts = mpegtsModule?.default || mpegtsModule;
 
         if (cancelled) {
           return;
         }
 
-        if (mpegts.getFeatureList().mseLivePlayback) {
+        if (mpegts?.getFeatureList?.().mseLivePlayback) {
           const player = mpegts.createPlayer(
             {
               type: "mse",
@@ -113,7 +114,9 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
           player.attachMediaElement(video);
           player.load();
           tsRef.current = player;
-          player.play();
+          if (autoplay) {
+            player.play().catch?.(() => {});
+          }
           handleReady();
           return;
         }

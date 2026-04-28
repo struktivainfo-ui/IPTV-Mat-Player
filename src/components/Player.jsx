@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-export default function Player({ src, autoplay, onProgress, onStatus, onEnded, onDiagnostic, tvMode }) {
+export default function Player({ src, autoplay, onProgress, onStatus, onEnded, onDiagnostic, tvMode, preferHls = false }) {
   const ref = useRef(null);
   const hlsRef = useRef(null);
   const onProgressRef = useRef(onProgress);
@@ -85,7 +85,7 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
     video.addEventListener("error", handleNativeError);
 
     (async () => {
-      if (src.toLowerCase().includes(".m3u8")) {
+      if (preferHls || src.toLowerCase().includes(".m3u8") || src.toLowerCase().includes("output=m3u8")) {
         const { default: Hls } = await import("hls.js");
 
         if (cancelled) {
@@ -145,7 +145,7 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
         hlsRef.current = null;
       }
     };
-  }, [src, autoplay]);
+  }, [src, autoplay, preferHls]);
 
   function fullscreen() {
     const video = ref.current;

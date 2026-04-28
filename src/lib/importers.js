@@ -12,6 +12,33 @@ function backendApi(path) {
   return BACKEND_URL ? `${BACKEND_URL}${path}` : path;
 }
 
+export function createPlaybackUrl(url, source = "") {
+  const value = String(url || "").trim();
+
+  if (!value) {
+    return "";
+  }
+
+  if (!BACKEND_URL) {
+    return value;
+  }
+
+  if (/^https?:\/\/test-streams\.mux\.dev/i.test(value) || /^https?:\/\/demo\.unified-streaming\.com/i.test(value)) {
+    return value;
+  }
+
+  if (source === "demo") {
+    return value;
+  }
+
+  return `${backendApi("/api/proxy/media")}?url=${encodeURIComponent(value)}`;
+}
+
+export function isLikelyHls(url) {
+  const value = String(url || "").toLowerCase();
+  return value.includes(".m3u8") || value.includes("output=m3u8") || value.includes("/api/proxy/media?");
+}
+
 function api(server, username, password, action) {
   return `${normalizeBaseUrl(server)}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=${action}`;
 }

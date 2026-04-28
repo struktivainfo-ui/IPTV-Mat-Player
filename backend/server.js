@@ -137,6 +137,32 @@ function validateProfilePayload(body = {}) {
   };
 }
 
+function proxiedMediaUrl(rawUrl) {
+  return `${normalizeString(process.env.PUBLIC_BASE_URL) || ""}/api/proxy/media?url=${encodeURIComponent(rawUrl)}`;
+}
+
+function rewritePlaylist(body, sourceUrl) {
+  const source = new URL(sourceUrl);
+
+  return String(body)
+    .split(/\r?\n/)
+    .map((line) => {
+      const trimmed = line.trim();
+
+      if (!trimmed || trimmed.startsWith("#")) {
+        return line;
+      }
+
+      try {
+        const absolute = new URL(trimmed, source).toString();
+        return proxiedMediaUrl(absolute);
+      } catch {
+        return line;
+      }
+    })
+    .join("\n");
+}
+
 app.get("/", (_request, response) => {
   response.json({ ok: true, name: "IPTV Mat Backend", version: "2.5.0" });
 });
@@ -320,6 +346,44 @@ app.post("/api/proxy/xtream", async (request, response, next) => {
     } catch {
       throw createError("Xtream-Antwort ist kein gültiges JSON.", 502);
     }
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/proxy/media", async (request, response, next) => {
+  try {
+    const target = ensureHttpUrl(request.query.url);
+    const upstream = await fetchWithTimeout(target, {
+      headers: {
+        Accept: "*/*",
+      },
+    });
+
+    if (!upstream.ok) {
+      throw createError(`Stream-Abruf fehlgeschlagen: HTTP ${upstream.status}`, upstream.status);
+    }
+
+    const contentType = normalizeString(upstream.headers.get("content-type")).toLowerCase();
+    const isPlaylist =
+      target.pathname.toLowerCase().endsWith(".m3u8") ||
+      target.searchParams.get("output") === "m3u8" ||
+      contentType.includes("mpegurl") ||
+      contentType.includes("vnd.apple.mpegurl");
+
+    if (isPlaylist) {
+      const text = await upstream.text();
+      const rewritten = rewritePlaylist(text, target.toString());
+      response.setHeader("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8");
+      response.setHeader("Cache-Control", "no-store");
+      response.send(rewritten);
+      return;
+    }
+
+    response.setHeader("Content-Type", upstream.headers.get("content-type") || "application/octet-stream");
+    response.setHeader("Cache-Control", "no-store");
+    const arrayBuffer = await upstream.arrayBuffer();
+    response.send(Buffer.from(arrayBuffer));
   } catch (error) {
     next(error);
   }

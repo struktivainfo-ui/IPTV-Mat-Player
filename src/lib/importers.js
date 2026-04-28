@@ -12,6 +12,26 @@ function backendApi(path) {
   return BACKEND_URL ? `${BACKEND_URL}${path}` : path;
 }
 
+export function detectPlaybackFormat(url) {
+  const value = String(url || "").trim();
+
+  if (!value) {
+    return "";
+  }
+
+  const lower = value.toLowerCase();
+
+  if (lower.includes(".m3u8") || lower.includes("output=m3u8")) {
+    return "hls";
+  }
+
+  if (lower.includes(".ts") || lower.includes("output=ts")) {
+    return "ts";
+  }
+
+  return "";
+}
+
 export function createPlaybackUrl(url, source = "") {
   const value = String(url || "").trim();
 
@@ -23,6 +43,8 @@ export function createPlaybackUrl(url, source = "") {
     return value;
   }
 
+  const format = detectPlaybackFormat(value);
+
   if (/^https?:\/\/test-streams\.mux\.dev/i.test(value) || /^https?:\/\/demo\.unified-streaming\.com/i.test(value)) {
     return value;
   }
@@ -31,12 +53,18 @@ export function createPlaybackUrl(url, source = "") {
     return value;
   }
 
-  return `${backendApi("/api/proxy/media")}?url=${encodeURIComponent(value)}`;
+  const formatQuery = format ? `&fmt=${encodeURIComponent(format)}` : "";
+  return `${backendApi("/api/proxy/media")}?url=${encodeURIComponent(value)}${formatQuery}`;
 }
 
-export function isLikelyHls(url) {
-  const value = String(url || "").toLowerCase();
-  return value.includes(".m3u8") || value.includes("output=m3u8") || value.includes("/api/proxy/media?");
+export function isLikelyHls(url, playbackUrl = "") {
+  const value = `${String(url || "")} ${String(playbackUrl || "")}`.toLowerCase();
+  return value.includes(".m3u8") || value.includes("output=m3u8") || value.includes("fmt=hls");
+}
+
+export function isLikelyTs(url, playbackUrl = "") {
+  const value = `${String(url || "")} ${String(playbackUrl || "")}`.toLowerCase();
+  return value.includes(".ts") || value.includes("output=ts") || value.includes("fmt=ts");
 }
 
 function api(server, username, password, action) {

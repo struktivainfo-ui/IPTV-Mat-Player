@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 
-export default function Player({ src, autoplay, onProgress, onStatus, onEnded, onDiagnostic, tvMode, preferHls = false }) {
+export default function Player({ src, autoplay, onProgress, onStatus, onEnded, onDiagnostic, tvMode, preferHls = false, preferTs = false }) {
   const ref = useRef(null);
   const hlsRef = useRef(null);
+  const tsRef = useRef(null);
   const onProgressRef = useRef(onProgress);
   const onStatusRef = useRef(onStatus);
   const onEndedRef = useRef(onEnded);
@@ -40,6 +41,10 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
+    }
+    if (tsRef.current) {
+      tsRef.current.destroy();
+      tsRef.current = null;
     }
 
     video.pause();
@@ -85,7 +90,36 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
     video.addEventListener("error", handleNativeError);
 
     (async () => {
-      if (preferHls || src.toLowerCase().includes(".m3u8") || src.toLowerCase().includes("output=m3u8")) {
+      if (preferTs || src.toLowerCase().includes(".ts") || src.toLowerCase().includes("output=ts") || src.toLowerCase().includes("fmt=ts")) {
+        const mpegts = await import("mpegts.js");
+
+        if (cancelled) {
+          return;
+        }
+
+        if (mpegts.getFeatureList().mseLivePlayback) {
+          const player = mpegts.createPlayer(
+            {
+              type: "mse",
+              isLive: true,
+              url: src,
+            },
+            {
+              enableWorker: true,
+              liveBufferLatencyChasing: true,
+            }
+          );
+
+          player.attachMediaElement(video);
+          player.load();
+          tsRef.current = player;
+          player.play();
+          handleReady();
+          return;
+        }
+      }
+
+      if (preferHls || src.toLowerCase().includes(".m3u8") || src.toLowerCase().includes("output=m3u8") || src.toLowerCase().includes("fmt=hls")) {
         const { default: Hls } = await import("hls.js");
 
         if (cancelled) {
@@ -144,8 +178,12 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      if (tsRef.current) {
+        tsRef.current.destroy();
+        tsRef.current = null;
+      }
     };
-  }, [src, autoplay, preferHls]);
+  }, [src, autoplay, preferHls, preferTs]);
 
   function fullscreen() {
     const video = ref.current;

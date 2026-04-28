@@ -137,8 +137,24 @@ function validateProfilePayload(body = {}) {
   };
 }
 
+function detectMediaFormat(rawUrl) {
+  const lower = normalizeString(rawUrl).toLowerCase();
+
+  if (lower.includes(".m3u8") || lower.includes("output=m3u8")) {
+    return "hls";
+  }
+
+  if (lower.includes(".ts") || lower.includes("output=ts")) {
+    return "ts";
+  }
+
+  return "";
+}
+
 function proxiedMediaUrl(rawUrl) {
-  return `${normalizeString(process.env.PUBLIC_BASE_URL) || ""}/api/proxy/media?url=${encodeURIComponent(rawUrl)}`;
+  const format = detectMediaFormat(rawUrl);
+  const formatQuery = format ? `&fmt=${encodeURIComponent(format)}` : "";
+  return `${normalizeString(process.env.PUBLIC_BASE_URL) || ""}/api/proxy/media?url=${encodeURIComponent(rawUrl)}${formatQuery}`;
 }
 
 function rewritePlaylist(body, sourceUrl) {
@@ -365,7 +381,9 @@ app.get("/api/proxy/media", async (request, response, next) => {
     }
 
     const contentType = normalizeString(upstream.headers.get("content-type")).toLowerCase();
+    const forcedFormat = normalizeString(request.query.fmt).toLowerCase();
     const isPlaylist =
+      forcedFormat === "hls" ||
       target.pathname.toLowerCase().endsWith(".m3u8") ||
       target.searchParams.get("output") === "m3u8" ||
       contentType.includes("mpegurl") ||
@@ -380,7 +398,7 @@ app.get("/api/proxy/media", async (request, response, next) => {
       return;
     }
 
-    response.setHeader("Content-Type", upstream.headers.get("content-type") || "application/octet-stream");
+    response.setHeader("Content-Type", forcedFormat === "ts" ? "video/mp2t" : upstream.headers.get("content-type") || "application/octet-stream");
     response.setHeader("Cache-Control", "no-store");
     const arrayBuffer = await upstream.arrayBuffer();
     response.send(Buffer.from(arrayBuffer));

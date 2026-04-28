@@ -207,8 +207,9 @@ export default function App() {
   }, [autoZap, visibleItems, selected, zapSeconds]);
 
   function persist(key, value, setter) {
-    save(key, value);
+    const result = save(key, value);
     setter(value);
+    return result;
   }
 
   function notify(message) {
@@ -370,14 +371,14 @@ export default function App() {
         throw new Error("Keine importierbaren Eintraege gefunden. Pruefe Zugangsdaten, URL oder Anbieter-CORS.");
       }
 
-      persist("items", mapped, setItems);
+      const itemsSave = persist("items", mapped, setItems);
       persist("hiddenCategories", [], setHiddenCategories);
       persist("selected", mapped[0].id, setSelected);
       persist("importCount", mapped.length, setImportCount);
       const stampValue = new Date().toLocaleString("de-DE");
       persist("stamp", stampValue, setStamp);
       setImportStep("Xtream Import abgeschlossen.");
-      setStatus(`${mapped.length} Xtream-Eintraege importiert.`);
+      setStatus(itemsSave.warning || `${mapped.length} Xtream-Eintraege importiert.`);
     } catch (error) {
       setImportError(error.message);
       setStatus(error.message);
@@ -411,14 +412,14 @@ export default function App() {
       if (!parsed.length) {
         throw new Error("Keine M3U Sender gefunden. Pruefe Datei oder Format.");
       }
-      persist("items", parsed, setItems);
+      const itemsSave = persist("items", parsed, setItems);
       persist("hiddenCategories", [], setHiddenCategories);
       persist("selected", parsed[0].id, setSelected);
       persist("importCount", parsed.length, setImportCount);
       const stampValue = new Date().toLocaleString("de-DE");
       persist("stamp", stampValue, setStamp);
       setImportStep("M3U Import abgeschlossen.");
-      setStatus(`${parsed.length} M3U-Eintraege importiert.`);
+      setStatus(itemsSave.warning || `${parsed.length} M3U-Eintraege importiert.`);
       if (sourceInput === m3uText.trim()) {
         setM3uText("");
       }
@@ -438,14 +439,14 @@ export default function App() {
       if (!parsed.length) {
         throw new Error("Keine M3U Sender im Text gefunden.");
       }
-      persist("items", parsed, setItems);
+      const itemsSave = persist("items", parsed, setItems);
       persist("hiddenCategories", [], setHiddenCategories);
       persist("selected", parsed[0].id, setSelected);
       persist("importCount", parsed.length, setImportCount);
       const stampValue = new Date().toLocaleString("de-DE");
       persist("stamp", stampValue, setStamp);
       setImportStep("M3U Text Import abgeschlossen.");
-      setStatus(`${parsed.length} M3U-Eintraege importiert.`);
+      setStatus(itemsSave.warning || `${parsed.length} M3U-Eintraege importiert.`);
     } catch (error) {
       setImportError(error.message);
       setStatus(error.message);
@@ -458,8 +459,8 @@ export default function App() {
       if (!parsed.length) {
         throw new Error("Keine M3U Sender im Text gefunden.");
       }
-      persist("items", [...items, ...parsed], setItems);
-      setStatus(`${parsed.length} M3U-Eintraege ergaenzt.`);
+      const itemsSave = persist("items", [...items, ...parsed], setItems);
+      setStatus(itemsSave.warning || `${parsed.length} M3U-Eintraege ergaenzt.`);
       setImportStep("M3U wurde ergaenzt, vorhandene Inhalte bleiben erhalten.");
     } catch (error) {
       setImportError(error.message);

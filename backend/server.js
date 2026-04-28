@@ -263,6 +263,37 @@ app.get("/api/proxy/m3u", async (request, response, next) => {
   }
 });
 
+app.post("/api/proxy/m3u", async (request, response, next) => {
+  try {
+    const urlValue = normalizeString(request.body?.url);
+
+    if (!urlValue) {
+      throw createError("M3U-URL fehlt.");
+    }
+
+    const target = ensureHttpUrl(urlValue);
+    const upstream = await fetchWithTimeout(target, {
+      headers: {
+        Accept: "application/x-mpegURL, application/vnd.apple.mpegurl, text/plain, */*",
+      },
+    });
+
+    if (!upstream.ok) {
+      throw createError(`M3U-Abruf fehlgeschlagen: HTTP ${upstream.status}`, upstream.status);
+    }
+
+    const body = await upstream.text();
+
+    if (!body.includes("#EXTM3U") && !body.includes("#EXTINF")) {
+      throw createError("Die Antwort enthaelt keine gueltige M3U-Playlist.", 422);
+    }
+
+    response.type("text/plain; charset=utf-8").send(body);
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/proxy/xtream", async (request, response, next) => {
   try {
     const { server, username, password, action } = request.body || {};

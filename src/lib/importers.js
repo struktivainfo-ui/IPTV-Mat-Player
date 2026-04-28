@@ -80,12 +80,26 @@ export async function fetchXtreamProxy(auth, action) {
   });
 }
 
-export async function fetchM3UProxy(url) {
-  if (!BACKEND_URL) {
-    return fetchText(url.trim());
+export async function fetchM3UProxy(input) {
+  const value = String(input || "").trim();
+
+  if (!value) {
+    throw new Error("Bitte M3U URL oder M3U Text eingeben.");
   }
 
-  return fetchText(backendApi(`/api/proxy/m3u?url=${encodeURIComponent(url.trim())}`), 20000);
+  if (value.includes("#EXTM3U") || value.includes("#EXTINF")) {
+    return value;
+  }
+
+  if (!BACKEND_URL) {
+    return fetchText(value);
+  }
+
+  return fetchText(backendApi("/api/proxy/m3u"), 25000, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: value }),
+  });
 }
 
 function parseAttrs(line) {

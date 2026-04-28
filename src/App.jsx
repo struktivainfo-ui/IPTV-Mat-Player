@@ -31,6 +31,7 @@ import {
   minutesOf,
 } from "./lib/appData.js";
 import { BACKEND_URL, createPlaybackUrl, fetchM3UProxy, fetchXtreamProxy, isLikelyHls, isLikelyTs, mapLive, mapSeries, mapVod, parseM3U } from "./lib/importers.js";
+import { isNativeAndroid, openNativePlayer } from "./lib/nativePlayer.js";
 import { load, save } from "./lib/storage.js";
 
 export default function App() {
@@ -88,6 +89,7 @@ export default function App() {
   );
 
   const selectedItem = items.find((entry) => entry.id === selected) || items[0] || DEMO_ITEMS[0];
+  const nativeAndroid = isNativeAndroid();
   const selectedPlaybackUrl = createPlaybackUrl(selectedItem.streamUrl, selectedItem.source);
   const selectedPreferHls = isLikelyHls(selectedItem.streamUrl, selectedPlaybackUrl);
   const selectedPreferTs = isLikelyTs(selectedItem.streamUrl, selectedPlaybackUrl);
@@ -228,6 +230,39 @@ export default function App() {
 
   function setSelectedPersist(id) {
     persist("selected", id, setSelected);
+    setPage("details");
+  }
+
+  function resolveItemTarget(target) {
+    if (!target) {
+      return selectedItem;
+    }
+
+    if (typeof target === "string") {
+      return items.find((entry) => entry.id === target) || selectedItem;
+    }
+
+    return target;
+  }
+
+  async function playItemNative(target = selectedItem) {
+    const item = resolveItemTarget(target);
+    try {
+      await openNativePlayer(item);
+      setStatus(`Nativer Player geoeffnet: ${item.title}`);
+    } catch (error) {
+      setImportError(error.message);
+      setStatus(error.message);
+    }
+  }
+
+  function handlePlayOrOpen(target = selectedItem) {
+    const item = resolveItemTarget(target);
+    persist("selected", item.id, setSelected);
+    if (nativeAndroid) {
+      playItemNative(item);
+      return;
+    }
     setPage("details");
   }
 
@@ -642,12 +677,12 @@ export default function App() {
             <h2>{selectedItem.title}</h2>
             <p>{selectedItem.description}</p>
             <div>
-              <button className="primary focusable" onClick={() => setPage("details")}>Abspielen / Details</button>
+              <button className="primary focusable" onClick={() => handlePlayOrOpen(selectedItem)}>{nativeAndroid ? "Nativ abspielen" : "Abspielen / Details"}</button>
               <button className="secondary focusable" onClick={() => toggleWatch(selectedItem.id)}>{watch.includes(selectedItem.id) ? "Aus Watchlist" : "Zur Watchlist"}</button>
               <button className="danger focusable" onClick={() => deleteItem(selectedItem.id)}>Sender loeschen</button>
             </div>
             {settings.trailer && selectedItem.trailerUrl && !tvMode ? <video className="trailer" src={selectedItem.trailerUrl} muted autoPlay playsInline loop /> : null}
-            <Player src={selectedPlaybackUrl} preferHls={selectedPreferHls} preferTs={selectedPreferTs} autoplay={settings.autoplay} onProgress={updateProgress} onEnded={completePlayback} onStatus={setStatus} onDiagnostic={updateDiagnostics} tvMode={tvMode} />
+            {nativeAndroid ? <div className="infoBox">Android nutzt jetzt den nativen Player fuer stabile TS-Wiedergabe. Tippe auf "Nativ abspielen".</div> : <Player src={selectedPlaybackUrl} preferHls={selectedPreferHls} preferTs={selectedPreferTs} autoplay={settings.autoplay} onProgress={updateProgress} onEnded={completePlayback} onStatus={setStatus} onDiagnostic={updateDiagnostics} tvMode={tvMode} />}
           </section>
           <CommandBar search={search} setSearch={setSearch} tab={tab} setTab={setTab} group={group} setGroup={setGroup} groups={groups} programView={programView} setProgramView={setProgramView} total={filtered.length} />
           <section className="card sortPanel">
@@ -656,9 +691,9 @@ export default function App() {
           </section>
           <section className="card">
             <h3>Programmauswahl</h3>
-            {programView === "guide" ? <ProgramGuide items={filtered} selectedId={selected} onSelect={(id) => persist("selected", id, setSelected)} onPlay={setSelectedPersist} onDelete={deleteItem} tvMode={tvMode} /> : null}
-            {programView === "cards" ? (filtered.length ? <div className="grid">{filtered.map((item) => <Card key={item.id} it={item} compact={settings.compact} tvMode={tvMode} onClick={() => setSelectedPersist(item.id)} />)}</div> : <EmptyState title="Keine Inhalte sichtbar" text="Pruefe Suchfilter, Kategorien oder ausgeblendete Gruppen." action="Kategorien oeffnen" onClick={() => setPage("categories")} />) : null}
-            {programView === "list" ? <div className="simpleProgramList">{filtered.map((item) => <ProgramRow key={item.id} it={item} active={item.id === selected} onClick={() => persist("selected", item.id, setSelected)} onPlay={() => setSelectedPersist(item.id)} onDelete={() => deleteItem(item.id)} />)}</div> : null}
+            {programView === "guide" ? <ProgramGuide items={filtered} selectedId={selected} onSelect={(id) => persist("selected", id, setSelected)} onPlay={handlePlayOrOpen} onDelete={deleteItem} tvMode={tvMode} /> : null}
+            {programView === "cards" ? (filtered.length ? <div className="grid">{filtered.map((item) => <Card key={item.id} it={item} compact={settings.compact} tvMode={tvMode} onClick={() => handlePlayOrOpen(item)} />)}</div> : <EmptyState title="Keine Inhalte sichtbar" text="Pruefe Suchfilter, Kategorien oder ausgeblendete Gruppen." action="Kategorien oeffnen" onClick={() => setPage("categories")} />) : null}
+            {programView === "list" ? <div className="simpleProgramList">{filtered.map((item) => <ProgramRow key={item.id} it={item} active={item.id === selected} onClick={() => persist("selected", item.id, setSelected)} onPlay={() => handlePlayOrOpen(item)} onDelete={() => deleteItem(item.id)} />)}</div> : null}
           </section>
           <section className="card">
             <h3>High-End EPG Vorschau</h3>
@@ -668,7 +703,7 @@ export default function App() {
           <StreamDiagnosticsPanel diagnostics={streamDiagnostics} currentTitle={selectedItem.title} />
         </>
       ) : null}
-      {page === "details" ? <><section className="card"><img className="detailImg" src={selectedItem.cover} /><div className="chips"><span className="chip active">{selectedItem.badge}</span><span className="chip">{selectedItem.year}</span><span className="chip">{selectedItem.duration}</span><span className="chip">{selectedItem.source || "app"}</span></div><h2>{selectedItem.title}</h2><p>{selectedItem.description}</p><button className="primary focusable" onClick={() => toggleWatch(selectedItem.id)}>{watch.includes(selectedItem.id) ? "Aus Watchlist" : "Zur Watchlist"}</button><button className="secondary focusable" onClick={() => navigator.clipboard?.writeText(selectedItem.streamUrl).then(() => setStatus("Stream-URL kopiert."))}>Stream kopieren</button><button className="danger focusable" onClick={() => deleteItem(selectedItem.id)}>Diesen Sender loeschen</button><Player src={selectedPlaybackUrl} preferHls={selectedPreferHls} preferTs={selectedPreferTs} autoplay={false} onProgress={updateProgress} onEnded={completePlayback} onStatus={setStatus} onDiagnostic={updateDiagnostics} tvMode={tvMode} /></section><StreamDiagnosticsPanel diagnostics={streamDiagnostics} currentTitle={selectedItem.title} /></> : null}
+      {page === "details" ? <><section className="card"><img className="detailImg" src={selectedItem.cover} /><div className="chips"><span className="chip active">{selectedItem.badge}</span><span className="chip">{selectedItem.year}</span><span className="chip">{selectedItem.duration}</span><span className="chip">{selectedItem.source || "app"}</span></div><h2>{selectedItem.title}</h2><p>{selectedItem.description}</p><button className="primary focusable" onClick={() => nativeAndroid ? playItemNative(selectedItem) : toggleWatch(selectedItem.id)}>{nativeAndroid ? "Nativ starten" : watch.includes(selectedItem.id) ? "Aus Watchlist" : "Zur Watchlist"}</button><button className="secondary focusable" onClick={() => navigator.clipboard?.writeText(selectedItem.streamUrl).then(() => setStatus("Stream-URL kopiert."))}>Stream kopieren</button><button className="danger focusable" onClick={() => deleteItem(selectedItem.id)}>Diesen Sender loeschen</button>{nativeAndroid ? <div className="infoBox">Auf Android wird dieser Stream im nativen ExoPlayer geoeffnet, nicht mehr im WebView.</div> : <Player src={selectedPlaybackUrl} preferHls={selectedPreferHls} preferTs={selectedPreferTs} autoplay={false} onProgress={updateProgress} onEnded={completePlayback} onStatus={setStatus} onDiagnostic={updateDiagnostics} tvMode={tvMode} />}</section><StreamDiagnosticsPanel diagnostics={streamDiagnostics} currentTitle={selectedItem.title} /></> : null}
       {page === "watch" ? <><section className="card"><h3>Weiter ansehen</h3>{continueWatching.length ? <div className="grid">{continueWatching.map((item) => <Card key={item.id} it={item} tvMode={tvMode} onClick={() => setSelectedPersist(item.id)} />)}</div> : <EmptyState title="Noch kein Fortschritt" text="Sobald du Inhalte anschaust, erscheinen sie hier." />}</section><section className="card"><h3>Watchlist</h3>{watchlist.length ? <div className="grid">{watchlist.map((item) => <Card key={item.id} it={item} tvMode={tvMode} onClick={() => setSelectedPersist(item.id)} />)}</div> : <EmptyState title="Watchlist leer" text="Fuege Inhalte ueber Details oder Startseite hinzu." />}</section></> : null}
       {page === "categories" ? <section className="card"><h3>Menue: Kategorie Manager</h3><p className="muted">Kategorien ausblenden, dauerhaft loeschen oder wieder anzeigen. Ausblenden ist sicherer als Loeschen.</p><input className="focusable" placeholder="Kategorie suchen ..." value={categorySearch} onChange={(event) => setCategorySearch(event.target.value)} /><div className="catActions"><button className="secondary focusable" onClick={restoreAllCategories}>Alle wieder anzeigen</button><button className="secondary focusable" onClick={() => setCategorySearch("")}>Suche loeschen</button></div><div className="catList">{categoryList.map((category) => <div className={`catRow focusable ${hiddenSet.has(category.key) ? "catHidden" : ""}`} key={category.key}><div><b>{category.name}</b><small>{category.section} - {category.count} Eintraege - {Object.keys(category.sourceCount).join(", ")}</small></div><button className={hiddenSet.has(category.key) ? "primary focusable" : "secondary focusable"} onClick={() => toggleCategory(category.key)}>{hiddenSet.has(category.key) ? "Einblenden" : "Ausblenden"}</button><button className="danger focusable" onClick={() => deleteCategory(category.key)}>Loeschen</button></div>)}</div></section> : null}
       {page === "epg" ? <><section className="card epgHero"><h3>High-End EPG Modus</h3><p className="muted">Programmuebersicht mit Details, Zeiten und Aufnahme-Planer. Die Planung wird lokal gespeichert; echte Aufnahme bei geschlossener App benoetigt spaeter einen Backend-Recorder.</p><input className="focusable" placeholder="Sendung, Sender oder Genre suchen ..." value={epgSearch} onChange={(event) => setEpgSearch(event.target.value)} /><select className="focusable" value={epgFilter} onChange={(event) => setEpgFilter(event.target.value)}>{epgGenres.map((genre) => <option key={genre} value={genre}>{genre}</option>)}</select><EpgTimeline events={epgFiltered} onOpen={openEpgDetails} onRecord={scheduleRecording} minutesOf={minutesOf} /><div className="epgProList">{epgFiltered.map((event) => <EpgCard key={event.id} event={event} onOpen={openEpgDetails} onRecord={scheduleRecording} tvMode={tvMode} />)}</div></section>{selectedEpg ? <section className="card"><h3>Sendungsdetails</h3><div className="chips"><span className="chip active">{selectedEpg.genre}</span><span className="chip">{selectedEpg.start} - {selectedEpg.end}</span><span className="chip">{epgDuration(selectedEpg)}</span></div><h2>{selectedEpg.title}</h2><p className="muted">{selectedEpg.channel}</p><p>{selectedEpg.description}</p><button className="primary focusable" onClick={() => scheduleRecording(selectedEpg)}>Diese Sendung aufnehmen</button><button className="secondary focusable" onClick={() => setSelectedEpg(null)}>Details schliessen</button></section> : null}</> : null}

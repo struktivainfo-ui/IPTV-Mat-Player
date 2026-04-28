@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import { Readable } from "node:stream";
 
 const app = express();
 const PORT = Number(process.env.PORT || 10000);
@@ -400,8 +401,14 @@ app.get("/api/proxy/media", async (request, response, next) => {
 
     response.setHeader("Content-Type", forcedFormat === "ts" ? "video/mp2t" : upstream.headers.get("content-type") || "application/octet-stream");
     response.setHeader("Cache-Control", "no-store");
-    const arrayBuffer = await upstream.arrayBuffer();
-    response.send(Buffer.from(arrayBuffer));
+
+    const bodyStream = upstream.body;
+
+    if (!bodyStream) {
+      throw createError("Leerer Stream vom Anbieter.", 502);
+    }
+
+    Readable.fromWeb(bodyStream).on("error", next).pipe(response);
   } catch (error) {
     next(error);
   }

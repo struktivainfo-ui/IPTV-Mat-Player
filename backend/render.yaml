@@ -6,9 +6,15 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
+    disk:
+      name: iptv-mat-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
+      - key: DATA_DIR
+        value: /var/data
       - key: PUBLIC_BASE_URL
         value: https://iptv-mat-backend-v6-6.onrender.com
       - key: ALLOWED_ORIGINS

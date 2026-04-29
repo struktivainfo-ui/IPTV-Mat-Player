@@ -1,10 +1,14 @@
 import cors from "cors";
 import express from "express";
+import fs from "node:fs";
+import path from "node:path";
 import { Readable } from "node:stream";
 
 const app = express();
 const PORT = Number(process.env.PORT || 10000);
 const BACKEND_VERSION = "2.6.0";
+const DATA_DIR = normalizeString(process.env.DATA_DIR, "/var/data");
+const DATA_FILE = path.join(DATA_DIR, "iptv-mat-store.json");
 const FETCH_TIMEOUT_MS = 20000;
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
@@ -52,6 +56,8 @@ const db = {
   favorites: [],
   devices: [],
 };
+
+loadPersistentDb();
 
 app.use(
   cors({
@@ -102,6 +108,32 @@ function redact(value) {
 
 function logInfo(event, meta = {}) {
   console.log(JSON.stringify({ level: "info", event, ...redact(meta) }));
+}
+
+function loadPersistentDb() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) {
+      return;
+    }
+
+    const parsed = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    for (const key of Object.keys(db)) {
+      if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+        db[key] = parsed[key];
+      }
+    }
+  } catch (error) {
+    console.warn(JSON.stringify({ level: "warn", event: "persistent_store_read_failed", message: error.message }));
+  }
+}
+
+function persistDb() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+  } catch (error) {
+    console.warn(JSON.stringify({ level: "warn", event: "persistent_store_write_failed", message: error.message }));
+  }
 }
 
 function ensureHttpUrl(value) {
@@ -315,6 +347,7 @@ app.post("/api/playlists", (request, response, next) => {
   try {
     const playlist = safeMetadata({ ...request.body, id: createId("playlist") });
     db.playlists = [playlist, ...db.playlists].slice(0, 100);
+    persistDb();
     response.status(201).json({ ok: true, item: playlist });
   } catch (error) {
     next(error);
@@ -329,6 +362,7 @@ app.post("/api/epg/cache", (request, response, next) => {
   try {
     const entry = safeMetadata({ ...request.body, id: createId("epg") });
     db.epgCache = [entry, ...db.epgCache].slice(0, 500);
+    persistDb();
     response.status(201).json({ ok: true, item: entry });
   } catch (error) {
     next(error);
@@ -342,6 +376,7 @@ app.get("/api/favorites", (_request, response) => {
 app.put("/api/favorites", (request, response) => {
   const items = Array.isArray(request.body?.items) ? request.body.items.map(safeMetadata).slice(0, 1000) : [];
   db.favorites = items;
+  persistDb();
   response.json({ ok: true, items: db.favorites });
 });
 
@@ -358,6 +393,7 @@ app.post("/api/devices", (request, response, next) => {
       lastSeenAt: new Date().toISOString(),
     };
     db.devices = [device, ...db.devices.filter((item) => item.id !== device.id)].slice(0, 100);
+    persistDb();
     response.status(201).json({ ok: true, item: device });
   } catch (error) {
     next(error);
@@ -378,6 +414,7 @@ app.post("/api/smart/history", (request, response, next) => {
     };
 
     db.smartHistory = [entry, ...db.smartHistory].slice(0, 500);
+    persistDb();
     response.status(201).json({ ok: true, item: entry });
   } catch (error) {
     next(error);
@@ -402,6 +439,7 @@ app.post("/api/recordings", (request, response, next) => {
       message: `Vorgemerkt: ${recording.title}`,
       createdAt: new Date().toISOString(),
     });
+    persistDb();
 
     response.status(201).json({ ok: true, recording, mode: "scheduled-only" });
   } catch (error) {
@@ -429,6 +467,7 @@ app.post("/api/mac-profiles", (request, response, next) => {
     };
 
     db.macProfiles.push(profile);
+    persistDb();
     response.status(201).json({ ok: true, profile: redact(profile) });
   } catch (error) {
     next(error);

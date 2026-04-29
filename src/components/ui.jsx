@@ -9,7 +9,7 @@ export function Login({ onLogin }) {
         <div className="badge">{APP_BADGE}</div>
         <h1>IPTV Mat Player</h1>
         <p>Legal nutzbarer IPTV Player. Die App liefert keine Sender, Streams oder Listen mit. Du importierst nur eigene legale Quellen.</p>
-        <div className="infoBox">Login kommt spaeter. Aktuell nutzt du die App lokal auf deinem Geraet ohne Fake-Konto und ohne Zahlungsfunktion.</div>
+        <div className="infoBox">Login kommt spaeter. Aktuell nutzt du die App lokal auf deinem Geraet ohne Konto und ohne Zahlungsfunktion.</div>
         <button className="primary wide" onClick={() => onLogin({ user: "Lokal", mode: "local", time: Date.now() })}>
           Ohne Konto starten
         </button>

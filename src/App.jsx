@@ -19,6 +19,9 @@ const DEFAULT_SETTINGS = {
   bufferMode: "strong",
   safeMode: true,
 };
+const PRO_PRODUCT_ID = "iptv_mat_player_pro_monthly";
+const PRO_PRICE = "4,99 EUR / Monat";
+const FREE_FAVORITE_LIMIT = 20;
 
 function SectionButton({ active, children, ...props }) {
   return (
@@ -46,6 +49,60 @@ function StreamTile({ item, active, favorite, onOpen, onPlay, onToggleFavorite, 
         </button>
       </div>
     </button>
+  );
+}
+
+function PosterTile({ item, active, favorite, onOpen, onPlay, onToggleFavorite }) {
+  return (
+    <button className={`posterTile focusable ${active ? "posterTileActive" : ""}`} onClick={onOpen}>
+      <div className="posterArt">
+        {item.cover ? <img src={item.cover} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <span>{String(item.title || "IP").slice(0, 2).toUpperCase()}</span>}
+      </div>
+      <div className="posterCopy">
+        <b>{item.title}</b>
+        <small>{item.section === "series" ? "Serie" : "Film"} - {itemGroup(item)}</small>
+      </div>
+      <div className="posterActions">
+        <span>{favorite ? "Favorit" : item.badge}</span>
+        <button className="primary focusable" onClick={(event) => { event.stopPropagation(); onPlay(); }}>Play</button>
+        <button className="ghostBtn focusable" onClick={(event) => { event.stopPropagation(); onToggleFavorite(); }}>{favorite ? "Entfernen" : "Merken"}</button>
+      </div>
+    </button>
+  );
+}
+
+function PosterGrid({ items, selectedId, watch, onSelect, onPlay, onToggleFavorite, emptyAction }) {
+  const [visibleCount, setVisibleCount] = useState(48);
+
+  useEffect(() => {
+    setVisibleCount(48);
+  }, [items]);
+
+  const visible = items.slice(0, visibleCount);
+
+  if (!items.length) {
+    return <EmptyState title="Keine Inhalte sichtbar" text="Pruefe Suche, Kategorie oder importiere eine eigene Playlist." action={emptyAction?.label} onClick={emptyAction?.onClick} />;
+  }
+
+  return (
+    <section className="posterGrid" aria-label="Mediathek">
+      {visible.map((item) => (
+        <PosterTile
+          key={item.id}
+          item={item}
+          active={item.id === selectedId}
+          favorite={watch.includes(item.id)}
+          onOpen={() => onSelect(item)}
+          onPlay={() => onPlay(item)}
+          onToggleFavorite={() => onToggleFavorite(item.id)}
+        />
+      ))}
+      {visibleCount < items.length ? (
+        <button className="loadMore focusable" onClick={() => setVisibleCount((count) => count + 48)}>
+          Mehr laden ({Math.min(visibleCount, items.length)} von {items.length})
+        </button>
+      ) : null}
+    </section>
   );
 }
 
@@ -151,8 +208,9 @@ export default function App() {
   const continueItems = visibleItems.filter((entry) => entry.progress > 0).sort((a, b) => (b.progress || 0) - (a.progress || 0));
   const hasPlaylist = visibleItems.length > 0;
   const heroItem = continueItems[0] || selectedItem || liveItems[0] || movieItems[0] || seriesItems[0] || EMPTY_ITEM;
-  const activeSection = page === "movies" || page === "series" ? "media" : page === "favorites" ? "favorites" : "live";
-  const baseItems = activeSection === "media" ? [...movieItems, ...seriesItems] : activeSection === "favorites" ? favoriteItems : liveItems;
+  const isPro = false;
+  const activeSection = page === "movies" ? "movie" : page === "series" ? "series" : page === "favorites" ? "favorites" : "live";
+  const baseItems = activeSection === "movie" ? movieItems : activeSection === "series" ? seriesItems : activeSection === "favorites" ? favoriteItems : liveItems;
   const groups = useMemo(() => ["Alle", ...Array.from(new Set(baseItems.map(itemGroup))).sort((a, b) => a.localeCompare(b, "de"))], [baseItems]);
   const filteredItems = useMemo(
     () =>
@@ -230,6 +288,11 @@ export default function App() {
     }
 
     loadSecureAuth();
+    secureGet("m3uUrl", "").then((storedUrl) => {
+      if (!cancelled && storedUrl) {
+        setM3uUrl(storedUrl);
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -282,11 +345,25 @@ export default function App() {
     setPage("player");
   }
 
+  function zap(delta) {
+    const currentList = liveItems.length ? liveItems : visibleItems;
+    const currentIndex = Math.max(0, currentList.findIndex((entry) => entry.id === selectedItem.id));
+    const nextItem = currentList[(currentIndex + delta + currentList.length) % currentList.length];
+    if (nextItem) {
+      playItem(nextItem);
+    }
+  }
+
   function updateProgress(progress) {
     persist("items", items.map((entry) => (entry.id === selectedItem.id ? { ...entry, progress: Math.max(entry.progress || 0, progress) } : entry)), setItems);
   }
 
   function toggleFavorite(id) {
+    if (!watch.includes(id) && !isPro && watch.length >= FREE_FAVORITE_LIMIT) {
+      notify(`Free Limit erreicht: maximal ${FREE_FAVORITE_LIMIT} Favoriten. Pro fuer ${PRO_PRICE} ist vorbereitet.`);
+      setPage("settings");
+      return;
+    }
     persist("watch", watch.includes(id) ? watch.filter((entry) => entry !== id) : [...watch, id], setWatch);
   }
 
@@ -324,6 +401,9 @@ export default function App() {
       }
       const text = await fetchM3UProxy(input);
       const parsed = await parseM3UAsync(text, (progress) => setImportStep(`Playlist wird verarbeitet ... ${progress}%`));
+      if (sourceKind === "url" && m3uUrl.trim()) {
+        await secureSet("m3uUrl", m3uUrl.trim()).catch(() => false);
+      }
       finishImport(parsed, sourceKind === "text" ? "m3u-text" : "m3u");
     } catch (error) {
       setImportError(error.message);
@@ -446,7 +526,8 @@ export default function App() {
   }
 
   function renderLibrary() {
-    const headline = page === "movies" || page === "series" ? "Filme & Serien" : page === "favorites" ? "Favoriten" : "Live TV";
+    const headline = page === "movies" ? "Filme" : page === "series" ? "Serien" : page === "favorites" ? "Favoriten" : "Live TV";
+    const isPosterView = page === "movies" || page === "series";
     return (
       <main className="premiumWorkspace">
         <section className="libraryHero">
@@ -462,6 +543,12 @@ export default function App() {
             <button className="secondary hugeAction focusable" onClick={() => setPage("import")}>
               Playlist hinzufuegen
             </button>
+            {page === "live" ? (
+              <>
+                <button className="ghostBtn hugeAction focusable" disabled={!liveItems.length} onClick={() => zap(-1)}>Kanal -</button>
+                <button className="ghostBtn hugeAction focusable" disabled={!liveItems.length} onClick={() => zap(1)}>Kanal +</button>
+              </>
+            ) : null}
           </div>
         </section>
         {playerError ? <div className="errorBox">{playerError}</div> : null}
@@ -471,7 +558,11 @@ export default function App() {
             {groups.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
           </select>
         </section>
-        <VirtualStreamList items={filteredItems} selectedId={selected} watch={watch} onSelect={selectItem} onPlay={playItem} onToggleFavorite={toggleFavorite} tvMode={tvMode} emptyAction={{ label: "Playlist hinzufuegen", onClick: () => setPage("import") }} />
+        {isPosterView ? (
+          <PosterGrid items={filteredItems} selectedId={selected} watch={watch} onSelect={selectItem} onPlay={playItem} onToggleFavorite={toggleFavorite} emptyAction={{ label: "Playlist hinzufuegen", onClick: () => setPage("import") }} />
+        ) : (
+          <VirtualStreamList items={filteredItems} selectedId={selected} watch={watch} onSelect={selectItem} onPlay={playItem} onToggleFavorite={toggleFavorite} tvMode={tvMode} emptyAction={{ label: "Playlist hinzufuegen", onClick: () => setPage("import") }} />
+        )}
       </main>
     );
   }
@@ -517,6 +608,19 @@ export default function App() {
           </div>
         </section>
         <section className="settingsGroup">
+          <h3>Pro</h3>
+          <div className="proPanel">
+            <div>
+              <span className="goldPill">Pro bald verfuegbar</span>
+              <h2>IPTV Mat Pro</h2>
+              <p>4,99 EUR pro Monat. Geplant sind unbegrenzte Favoriten, mehrere Playlists, EPG Cache und Premium Player Optionen.</p>
+              <small>Google Play Billing Produkt-ID: {PRO_PRODUCT_ID}</small>
+            </div>
+            <button className="secondary focusable" disabled>Pro bald verfuegbar</button>
+          </div>
+          <p className="muted">Keine Fake-Zahlung: Der Kauf wird erst aktiviert, wenn Google Play Billing voll integriert und getestet ist.</p>
+        </section>
+        <section className="settingsGroup">
           <h3>App</h3>
           <div className="settingsGrid">
             <button className="settingTile focusable" onClick={() => setPage("import")}><b>Playlist hinzufuegen</b><small>M3U oder Xtream laden</small></button>
@@ -526,7 +630,7 @@ export default function App() {
         </section>
         <section className="settingsGroup">
           <h3>EPG, Recording, Premium</h3>
-          <p className="muted">EPG ist noch nicht verbunden. Recording ist nur als spaetere Vormerk-Funktion geplant. Premium/No-Ads ist vorbereitet, aber ohne Store-Integration nicht aktiv.</p>
+          <p className="muted">EPG Cache ist fuer Pro vorbereitet. Recording ist nur als spaetere Vormerk-Funktion geplant und wird nicht als echte Aufnahme beworben.</p>
         </section>
       </main>
     );
@@ -534,14 +638,14 @@ export default function App() {
 
   const nav = [
     ["live", "Live TV", true],
-    ["movies", "Filme & Serien", true],
+    ["movies", "Filme", true],
+    ["series", "Serien", true],
     ["favorites", "Favoriten", true],
     ["settings", "Einstellungen", true],
   ].filter((entry) => entry[2]);
   const isNavActive = (key) =>
     page === key ||
-    (key === "live" && page === "player") ||
-    (key === "movies" && page === "series");
+    (key === "live" && page === "player");
 
   return (
     <div className={`app premiumApp ${tvMode ? "tvMode" : ""}`}>

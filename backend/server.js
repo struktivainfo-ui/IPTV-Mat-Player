@@ -6,7 +6,7 @@ import { Readable } from "node:stream";
 
 const app = express();
 const PORT = Number(process.env.PORT || 10000);
-const BACKEND_VERSION = "2.6.0";
+const BACKEND_VERSION = "2.7.0";
 const DATA_DIR = normalizeString(process.env.DATA_DIR, "/var/data");
 const DATA_FILE = path.join(DATA_DIR, "iptv-mat-store.json");
 const FETCH_TIMEOUT_MS = 20000;
@@ -26,11 +26,6 @@ const PRIVATE_HOST_PATTERNS = [
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://iptv-mat-player.vercel.app",
   "capacitor://localhost",
-  "http://localhost",
-  "https://localhost",
-  "http://localhost:3000",
-  "http://localhost:4173",
-  "http://localhost:5173",
 ];
 const ALLOWED_ORIGINS = new Set(
   String(process.env.ALLOWED_ORIGINS || DEFAULT_ALLOWED_ORIGINS.join(","))
@@ -51,6 +46,9 @@ const db = {
     premium: false,
     noAds: false,
     storeConnected: false,
+    productId: "iptv_mat_player_pro_monthly",
+    price: "4,99 EUR / Monat",
+    status: "coming-soon",
   },
   playlists: [],
   epgCache: [],

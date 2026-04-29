@@ -1,5 +1,5 @@
-export const APP_VERSION = "8.0.0";
-export const APP_BADGE = "v8.0 Play Ready";
+export const APP_VERSION = "8.1.0";
+export const APP_BADGE = "v8.1 Premium";
 
 export const EMPTY_ITEM = {
   id: "empty",

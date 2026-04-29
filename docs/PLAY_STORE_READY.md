@@ -19,6 +19,7 @@ Die App verarbeitet vom Nutzer eingegebene IPTV-Quellen, Zugangsdaten und Wieder
 - Backend-Logs redigieren sensible Felder.
 - Rate Limiting ist aktiv.
 - Recording/DVR darf nur als Vormerkung oder geplant beschrieben werden, solange kein echter Backend-Recorder existiert.
+- Pro ist fuer `4,99 EUR / Monat` mit Google Play Billing Produkt-ID `iptv_mat_player_pro_monthly` vorbereitet. Bis Billing vollstaendig implementiert ist, darf die App nur "Pro bald verfuegbar" anzeigen.
 
 ## Upload-Voraussetzung
 

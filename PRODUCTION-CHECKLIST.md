@@ -2,7 +2,7 @@
 
 ## Android Release
 
-- App version is synchronized: `versionName 8.0.0`, `versionCode 80`, title `IPTV Mat Player`, UI badge `v8.0 Play Ready`.
+- App version is synchronized: `versionName 8.1.0`, `versionCode 81`, title `IPTV Mat Player`, UI badge `v8.1 Premium`.
 - Release build uses `minifyEnabled true` and `shrinkResources true`.
 - Release build is signed with a local upload key that is excluded from Git.
 - Debuggable release builds are disabled with `debuggable false`.
@@ -10,6 +10,7 @@
 - Global cleartext traffic is disabled through `network_security_config`.
 - Native player plugin is registered in `MainActivity` and launches `NativePlayerActivity`.
 - Native secure storage plugin is registered for encrypted Android credential storage.
+- Production CORS allows only the Vercel domain and Capacitor Android origin.
 
 ## Privacy And Data
 
@@ -19,6 +20,7 @@
 - The privacy policy must explain that IPTV source credentials are processed locally and, when configured, through the Render backend proxy.
 - The app must not ship provider credentials, copyrighted playlists, or demo streams.
 - Suggested privacy policy text: "IPTV Mat Player stellt keine Sender, Streams, Playlists oder Inhalte bereit. Nutzer koennen eigene Quellen eintragen. Zugangsdaten werden nur fuer den Import und die Wiedergabe verwendet und nicht fuer Werbezwecke verkauft."
+- Paywall is prepared for `iptv_mat_player_pro_monthly` at `4,99 EUR / Monat`, but the UI must say "Pro bald verfuegbar" until Google Play Billing is fully implemented.
 
 ## Play Store
 

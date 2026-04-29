@@ -29,7 +29,7 @@ Wichtige Werte:
 NODE_ENV=production
 DATA_DIR=/var/data
 PUBLIC_BASE_URL=https://iptv-mat-backend-v6-6.onrender.com
-ALLOWED_ORIGINS=https://iptv-mat-player.vercel.app,capacitor://localhost,http://localhost,https://localhost,http://localhost:3000,http://localhost:4173,http://localhost:5173
+ALLOWED_ORIGINS=https://iptv-mat-player.vercel.app,capacitor://localhost
 ```
 
 Der Blueprint haengt eine kleine Render Persistent Disk unter `/var/data` ein. Dort speichert das Backend Sync-Metadaten als JSON-Datei. Fuer groessere Nutzerzahlen sollte spaeter Render Postgres oder Redis statt JSON-Datei genutzt werden.

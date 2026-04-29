@@ -1,8 +1,9 @@
 import { arr, fallbackCover, fallbackTrailer, has, safeText, top } from "./appData.js";
 
-export const BACKEND_URL = String(import.meta.env.VITE_BACKEND_URL || "")
+export const API_BASE_URL = String(import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || "")
   .trim()
   .replace(/\/+$/, "");
+export const BACKEND_URL = API_BASE_URL;
 
 function normalizeBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
@@ -18,6 +19,32 @@ function assertHttpUrl(value, label) {
 
 function backendApi(path) {
   return BACKEND_URL ? `${BACKEND_URL}${path}` : path;
+}
+
+function assertBackendConfigured() {
+  if (!BACKEND_URL) {
+    throw new Error("Render Backend nicht konfiguriert. Bitte VITE_API_URL in Vercel setzen.");
+  }
+}
+
+export async function checkBackendHealth() {
+  if (!BACKEND_URL) {
+    return {
+      ok: false,
+      offline: true,
+      error: "Render Backend nicht konfiguriert. Bitte VITE_API_URL in Vercel setzen.",
+    };
+  }
+
+  try {
+    return await fetchJson(backendApi("/health"), 7000);
+  } catch (error) {
+    return {
+      ok: false,
+      offline: true,
+      error: `Render Backend nicht erreichbar: ${error.message}`,
+    };
+  }
 }
 
 export function detectPlaybackFormat(url) {
@@ -124,10 +151,7 @@ export async function fetchJson(url, timeoutMs = 17000, options = {}) {
 
 export async function fetchXtreamProxy(auth, action) {
   assertHttpUrl(auth.server, "Xtream-Server-URL");
-
-  if (!BACKEND_URL) {
-    return fetchJson(api(auth.server, auth.username, auth.password, action));
-  }
+  assertBackendConfigured();
 
   return fetchJson(backendApi("/api/proxy/xtream"), 20000, {
     method: "POST",
@@ -157,7 +181,7 @@ export async function fetchM3UProxy(input) {
   }
 
   if (!BACKEND_URL) {
-    return fetchText(value);
+    throw new Error("Render Backend nicht konfiguriert. URL-Importe laufen aus Sicherheitsgruenden nur ueber VITE_API_URL.");
   }
 
   return fetchText(backendApi("/api/proxy/m3u"), 25000, {

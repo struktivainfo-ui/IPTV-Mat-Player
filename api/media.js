@@ -16,7 +16,7 @@ export default async function handler(request, response) {
   }
 
   try {
-    const requestUrl = new URL(request.url, "http://localhost");
+    const requestUrl = new URL(request.url, "https://vercel-request.invalid");
     const target = requestUrl.searchParams.get("target");
     const safeTarget = ensureSafeUrl(target);
     const upstream = await fetch(safeTarget, {

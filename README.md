@@ -1,39 +1,68 @@
-# IPTV Mat Fullstack v6.6 Profiles and Diagnostics
+# IPTV Mat Player
 
-Gepruefte Fullstack-Version mit:
-- sauberem Frontend-Refactor
-- Quellprofilen fuer Xtream und M3U
-- Stream-Diagnose fuer den Player
-- Backend-Proxy fuer Xtream und M3U
+Produktionsaufbau fuer einen legalen IPTV-Player ohne mitgelieferte Sender, Streams oder Playlists.
 
-## Frontend
-- Hosting: Vercel
-- Root: `frontend`
-- Build: `npm run build`
-- Output: `dist`
-- lokale Datei:
-  - `frontend/.env` nur lokal benutzen, nicht zu GitHub pushen
-- Env in Vercel:
-  - `VITE_BACKEND_URL=https://DEIN-RENDER-BACKEND.onrender.com`
+## Architektur
 
-## Backend
-- Hosting: Render
-- Root: `backend`
-- Start: `npm start`
-- Healthcheck: `/api/health`
+- Frontend: Vercel
+- Backend: Render
+- Android: Capacitor WebView plus nativer Player-Fallback
+- Inhalte: Nutzer importieren eigene M3U/M3U8- oder Xtream-Zugangsdaten
 
-## Render
-- Render Blueprint im Projektwurzelordner:
-  - [render.yaml](</C:/Users/matzk/OneDrive/Desktop/salon-karola-v7-2-render-menu-fix/zip-audit-v6.4/render.yaml>)
+## Frontend Env
 
-## Deployment-Reihenfolge
-1. Backend auf Render deployen
-2. Render-URL kopieren
-3. `VITE_BACKEND_URL` in Vercel setzen
-4. Frontend in Vercel neu deployen
+In Vercel muss diese Environment Variable gesetzt sein:
 
-## GitHub-Struktur
-- `frontend/` fuer die Vercel-App
-- `backend/` fuer den Render-Service
-- `render.yaml` im Projektwurzelordner fuer Render Blueprint
-- `.gitignore` blendet `node_modules`, `dist` und lokale `.env` Dateien aus
+```env
+VITE_API_URL=https://iptv-mat-backend-v6-6.onrender.com
+```
+
+`VITE_BACKEND_URL` bleibt nur als Legacy-Fallback erhalten. Neue Builds sollen `VITE_API_URL` verwenden.
+
+## Backend Env
+
+Render nutzt den Blueprint [render.yaml](</C:/Users/matzk/OneDrive/Desktop/salon-karola-v7-2-render-menu-fix/IPTV-Mat-Player/render.yaml>).
+
+Wichtige Werte:
+
+```env
+NODE_ENV=production
+PUBLIC_BASE_URL=https://iptv-mat-backend-v6-6.onrender.com
+ALLOWED_ORIGINS=https://iptv-mat-player.vercel.app,capacitor://localhost,http://localhost,https://localhost,http://localhost:3000,http://localhost:4173,http://localhost:5173
+```
+
+Healthcheck:
+
+```text
+GET /health
+GET /api/health
+```
+
+## Backend-Aufgaben
+
+Render stellt die stabile API-Schicht bereit fuer:
+
+- M3U/Xtream Proxy und CORS-sicheren Import
+- Media-Proxy fuer HLS/TS
+- User-Status
+- Paywall-Status als vorbereitete Free/Premium-Struktur
+- Playlist-Metadaten-Speicherung ohne Zugangsdaten
+- EPG-Cache-Struktur
+- Favoriten-Sync
+- Geraeteverwaltung
+
+## Sicherheit
+
+- Keine API Keys im Frontend.
+- Keine Xtream/M3U-Zugangsdaten in `localStorage`.
+- URL-Importe laufen nur ueber Render, damit CORS/WebView-Probleme kontrolliert behandelt werden.
+- Backend-Logs redigieren sensible Felder wie Passwort, Benutzername, URL, Tokens und MAC-Adresse.
+- Die App liefert keine Sender, Streams, Playlists oder Inhalte mit.
+
+## Deployment
+
+1. Nach GitHub pushen.
+2. Vercel baut das Frontend automatisch.
+3. Render Blueprint synchronisieren oder Render Service neu deployen.
+4. In Vercel pruefen, dass `VITE_API_URL` gesetzt ist.
+5. Healthcheck pruefen: `https://iptv-mat-backend-v6-6.onrender.com/health`.

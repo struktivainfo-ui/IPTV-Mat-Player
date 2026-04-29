@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 
 const app = express();
 const PORT = Number(process.env.PORT || 10000);
+const BACKEND_VERSION = "2.6.0";
 const FETCH_TIMEOUT_MS = 20000;
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
@@ -18,17 +19,50 @@ const PRIVATE_HOST_PATTERNS = [
   /^fc/i,
   /^fd/i,
 ];
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://iptv-mat-player.vercel.app",
+  "capacitor://localhost",
+  "http://localhost",
+  "https://localhost",
+  "http://localhost:3000",
+  "http://localhost:4173",
+  "http://localhost:5173",
+];
+const ALLOWED_ORIGINS = new Set(
+  String(process.env.ALLOWED_ORIGINS || DEFAULT_ALLOWED_ORIGINS.join(","))
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+);
 
 const db = {
   recordings: [],
   macProfiles: [],
   events: [],
   smartHistory: [],
+  users: [],
+  paywallStatus: {
+    plan: "free",
+    premium: false,
+    noAds: false,
+    storeConnected: false,
+  },
+  playlists: [],
+  epgCache: [],
+  favorites: [],
+  devices: [],
 };
 
 app.use(
   cors({
-    origin: true,
+    origin(origin, callback) {
+      if (!origin || ALLOWED_ORIGINS.has(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(createError("Origin nicht erlaubt.", 403));
+    },
     credentials: false,
   })
 );
@@ -48,13 +82,35 @@ function createError(message, status = 400) {
   return error;
 }
 
+function redact(value) {
+  if (Array.isArray(value)) {
+    return value.map(redact);
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const blocked = new Set(["password", "username", "token", "macAddress", "m3uUrl", "streamUrl", "url"]);
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entryValue]) => [
+      key,
+      blocked.has(key) ? "[redacted]" : redact(entryValue),
+    ])
+  );
+}
+
+function logInfo(event, meta = {}) {
+  console.log(JSON.stringify({ level: "info", event, ...redact(meta) }));
+}
+
 function ensureHttpUrl(value) {
   let url;
 
   try {
     url = new URL(normalizeString(value));
   } catch {
-    throw createError("Ungültige URL.");
+    throw createError("Ungueltige URL.");
   }
 
   if (!["http:", "https:"].includes(url.protocol)) {
@@ -84,7 +140,7 @@ async function fetchWithTimeout(url, options = {}) {
     });
   } catch (error) {
     if (error?.name === "AbortError") {
-      throw createError("Zeitüberschreitung beim Abruf des Anbieters.", 504);
+      throw createError("Zeitueberschreitung beim Abruf des Anbieters.", 504);
     }
 
     throw createError(error?.message || "Abruf fehlgeschlagen.", 502);
@@ -107,7 +163,7 @@ function validateRecordingPayload(body = {}) {
   const channel = normalizeString(body.channel);
 
   if (!title || !channel) {
-    throw createError("Für Aufnahmen sind Titel und Sender erforderlich.");
+    throw createError("Fuer Vormerkungen sind Titel und Sender erforderlich.");
   }
 
   return {
@@ -127,7 +183,7 @@ function validateProfilePayload(body = {}) {
   const macAddress = normalizeString(body.macAddress || body.mac);
 
   if (!name || !macAddress) {
-    throw createError("Für MAC-Profile sind Name und MAC-Adresse erforderlich.");
+    throw createError("Fuer MAC-Profile sind Name und MAC-Adresse erforderlich.");
   }
 
   return {
@@ -180,38 +236,136 @@ function rewritePlaylist(body, sourceUrl) {
     .join("\n");
 }
 
+function healthPayload() {
+  return {
+    ok: true,
+    name: "IPTV Mat Backend",
+    version: BACKEND_VERSION,
+    timestamp: new Date().toISOString(),
+    render: true,
+    counters: {
+      recordings: db.recordings.length,
+      macProfiles: db.macProfiles.length,
+      smartHistory: db.smartHistory.length,
+      events: db.events.length,
+      playlists: db.playlists.length,
+      favorites: db.favorites.length,
+      devices: db.devices.length,
+      epgCache: db.epgCache.length,
+    },
+  };
+}
+
+function safeMetadata(body = {}) {
+  return {
+    id: normalizeString(body.id, createId("item")),
+    name: normalizeString(body.name || body.title, "Unbenannt"),
+    type: normalizeString(body.type, "metadata"),
+    count: Number(body.count || body.itemCount || 0),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 app.get("/", (_request, response) => {
-  response.json({ ok: true, name: "IPTV Mat Backend", version: "2.5.0" });
+  response.json({ ok: true, name: "IPTV Mat Backend", version: BACKEND_VERSION });
+});
+
+app.get("/health", (_request, response) => {
+  response.json(healthPayload());
+});
+
+app.get("/api/health", (_request, response) => {
+  response.json(healthPayload());
 });
 
 app.get("/api/client-config", (_request, response) => {
   response.json({
     ok: true,
-    version: "2.5.0",
+    version: BACKEND_VERSION,
+    allowedOrigins: Array.from(ALLOWED_ORIGINS),
     features: {
       smartView: true,
-      recordings: true,
+      recordings: "scheduled-only",
       macProfiles: true,
       health: true,
       importProxy: true,
+      userStatus: true,
+      paywallStatus: true,
+      playlistSync: true,
+      epgCache: true,
+      favoritesSync: true,
+      deviceRegistry: true,
     },
   });
 });
 
-app.get("/api/health", (_request, response) => {
-  response.json({
-    ok: true,
-    version: "2.5.0",
-    timestamp: new Date().toISOString(),
-    recordings: db.recordings.length,
-    macProfiles: db.macProfiles.length,
-    smartHistory: db.smartHistory.length,
-    events: db.events.length,
-  });
+app.get("/api/user/status", (_request, response) => {
+  response.json({ ok: true, user: { id: "guest", mode: "guest" }, profiles: db.users.length });
+});
+
+app.get("/api/paywall/status", (_request, response) => {
+  response.json({ ok: true, ...db.paywallStatus });
+});
+
+app.get("/api/playlists", (_request, response) => {
+  response.json({ ok: true, items: db.playlists });
+});
+
+app.post("/api/playlists", (request, response, next) => {
+  try {
+    const playlist = safeMetadata({ ...request.body, id: createId("playlist") });
+    db.playlists = [playlist, ...db.playlists].slice(0, 100);
+    response.status(201).json({ ok: true, item: playlist });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/epg/cache", (_request, response) => {
+  response.json({ ok: true, items: db.epgCache });
+});
+
+app.post("/api/epg/cache", (request, response, next) => {
+  try {
+    const entry = safeMetadata({ ...request.body, id: createId("epg") });
+    db.epgCache = [entry, ...db.epgCache].slice(0, 500);
+    response.status(201).json({ ok: true, item: entry });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/favorites", (_request, response) => {
+  response.json({ ok: true, items: db.favorites });
+});
+
+app.put("/api/favorites", (request, response) => {
+  const items = Array.isArray(request.body?.items) ? request.body.items.map(safeMetadata).slice(0, 1000) : [];
+  db.favorites = items;
+  response.json({ ok: true, items: db.favorites });
+});
+
+app.get("/api/devices", (_request, response) => {
+  response.json({ ok: true, items: db.devices });
+});
+
+app.post("/api/devices", (request, response, next) => {
+  try {
+    const device = {
+      id: normalizeString(request.body?.id, createId("device")),
+      name: normalizeString(request.body?.name, "Android App"),
+      platform: normalizeString(request.body?.platform, "unknown"),
+      lastSeenAt: new Date().toISOString(),
+    };
+    db.devices = [device, ...db.devices.filter((item) => item.id !== device.id)].slice(0, 100);
+    response.status(201).json({ ok: true, item: device });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/api/smart/history", (_request, response) => {
-  response.json({ items: db.smartHistory });
+  response.json({ ok: true, items: db.smartHistory });
 });
 
 app.post("/api/smart/history", (request, response, next) => {
@@ -220,7 +374,7 @@ app.post("/api/smart/history", (request, response, next) => {
       id: createId("history"),
       title: normalizeString(request.body?.title || request.body?.message, "Eintrag"),
       timestamp: normalizeString(request.body?.timestamp, new Date().toISOString()),
-      payload: request.body || {},
+      payload: redact(request.body || {}),
     };
 
     db.smartHistory = [entry, ...db.smartHistory].slice(0, 500);
@@ -231,7 +385,7 @@ app.post("/api/smart/history", (request, response, next) => {
 });
 
 app.get("/api/recordings", (_request, response) => {
-  response.json({ items: db.recordings });
+  response.json({ ok: true, items: db.recordings, mode: "scheduled-only" });
 });
 
 app.post("/api/recordings", (request, response, next) => {
@@ -244,27 +398,27 @@ app.post("/api/recordings", (request, response, next) => {
     db.recordings.push(recording);
     db.events.push({
       id: createId("event"),
-      type: "recording_scheduled",
-      message: `Geplant: ${recording.title}`,
+      type: "program_scheduled",
+      message: `Vorgemerkt: ${recording.title}`,
       createdAt: new Date().toISOString(),
     });
 
-    response.status(201).json({ ok: true, recording });
+    response.status(201).json({ ok: true, recording, mode: "scheduled-only" });
   } catch (error) {
     next(error);
   }
 });
 
 app.get("/api/recordings/files", (_request, response) => {
-  response.json({ items: [] });
+  response.json({ ok: true, items: [], mode: "scheduled-only" });
 });
 
 app.get("/api/recorder/events", (_request, response) => {
-  response.json({ items: db.events.slice().reverse() });
+  response.json({ ok: true, items: db.events.slice().reverse(), mode: "scheduled-only" });
 });
 
 app.get("/api/mac-profiles", (_request, response) => {
-  response.json({ items: db.macProfiles });
+  response.json({ ok: true, items: db.macProfiles.map(redact) });
 });
 
 app.post("/api/mac-profiles", (request, response, next) => {
@@ -275,7 +429,7 @@ app.post("/api/mac-profiles", (request, response, next) => {
     };
 
     db.macProfiles.push(profile);
-    response.status(201).json({ ok: true, profile });
+    response.status(201).json({ ok: true, profile: redact(profile) });
   } catch (error) {
     next(error);
   }
@@ -297,7 +451,7 @@ app.get("/api/proxy/m3u", async (request, response, next) => {
     const body = await upstream.text();
 
     if (!body.includes("#EXTM3U") && !body.includes("#EXTINF")) {
-      throw createError("Die Antwort enthält keine gültige M3U-Playlist.", 422);
+      throw createError("Die Antwort enthaelt keine gueltige M3U-Playlist.", 422);
     }
 
     response.type("text/plain; charset=utf-8").send(body);
@@ -361,7 +515,7 @@ app.post("/api/proxy/xtream", async (request, response, next) => {
     try {
       response.json(JSON.parse(text));
     } catch {
-      throw createError("Xtream-Antwort ist kein gültiges JSON.", 502);
+      throw createError("Xtream-Antwort ist kein gueltiges JSON.", 502);
     }
   } catch (error) {
     next(error);
@@ -414,13 +568,26 @@ app.get("/api/proxy/media", async (request, response, next) => {
   }
 });
 
-app.use((error, _request, response, _next) => {
-  response.status(error.status || 500).json({
+app.use((error, request, response, _next) => {
+  const status = Number(error.status || 500);
+
+  if (status >= 500) {
+    logInfo("request_error", {
+      status,
+      method: request.method,
+      path: request.path,
+      message: error.message,
+    });
+  }
+
+  response.status(status).json({
     ok: false,
+    status,
     error: error.message || "Interner Serverfehler.",
+    timestamp: new Date().toISOString(),
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`Backend v2.5 running on ${PORT}`);
+  logInfo("backend_started", { port: PORT, version: BACKEND_VERSION });
 });

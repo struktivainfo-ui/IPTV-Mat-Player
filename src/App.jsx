@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Player from "./components/Player.jsx";
 import { EmptyState, StatusPanel } from "./components/ui.jsx";
 import { APP_BADGE, categoryKey, DEFAULT_ITEMS, EMPTY_ITEM, itemGroup } from "./lib/appData.js";
-import { BACKEND_URL, createPlaybackUrl, fetchM3UProxy, fetchXtreamProxy, isLikelyHls, isLikelyTs, mapLive, mapSeries, mapVod, parseM3UAsync } from "./lib/importers.js";
+import { BACKEND_URL, checkBackendHealth, createPlaybackUrl, fetchM3UProxy, fetchXtreamProxy, isLikelyHls, isLikelyTs, mapLive, mapSeries, mapVod, parseM3UAsync } from "./lib/importers.js";
 import { isNativeAndroid, openNativePlayer } from "./lib/nativePlayer.js";
 import { load, save } from "./lib/storage.js";
 
@@ -129,6 +129,11 @@ export default function App() {
   const [m3uText, setM3uText] = useState("");
   const [auth, setAuth] = useState(() => load("auth", { server: "", username: "", password: "" }));
   const [playerError, setPlayerError] = useState("");
+  const [backendState, setBackendState] = useState(() => ({
+    checked: false,
+    ok: false,
+    message: BACKEND_URL ? "Render Backend wird geprueft ..." : "Render Backend nicht konfiguriert.",
+  }));
 
   const nativeAndroid = isNativeAndroid();
   const tvMode = !!settings.tvMode;
@@ -191,6 +196,28 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [page, tvMode, hasPlaylist]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function verifyBackend() {
+      const health = await checkBackendHealth();
+      if (cancelled) {
+        return;
+      }
+
+      setBackendState({
+        checked: true,
+        ok: !!health.ok,
+        message: health.ok ? `Render Backend online (${health.version || "OK"})` : health.error,
+      });
+    }
+
+    verifyBackend();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function persist(key, value, setter) {
     const result = save(key, value);
     setter(value);
@@ -205,6 +232,17 @@ export default function App() {
     setStatus(message);
     setToast(message);
     setTimeout(() => setToast(""), 2800);
+  }
+
+  function requireBackendForUrlImport() {
+    if (backendState.ok) {
+      return true;
+    }
+
+    const message = backendState.message || "Render Backend nicht erreichbar.";
+    setImportError(message);
+    setStatus(message);
+    return false;
   }
 
   function selectItem(item) {
@@ -264,8 +302,8 @@ export default function App() {
       setBusy(true);
       setImportError("");
       setImportStep(BACKEND_URL && !input.includes("#EXTINF") ? "M3U wird ueber Backend geladen ..." : "M3U wird geladen ...");
-      if (sourceKind === "url" && m3uUrl.trim()) {
-        persist("m3uUrl", m3uUrl.trim(), setM3uUrl);
+      if (!input.includes("#EXTINF") && !input.includes("#EXTM3U") && !requireBackendForUrlImport()) {
+        return;
       }
       const text = await fetchM3UProxy(input);
       const parsed = await parseM3UAsync(text, (progress) => setImportStep(`Playlist wird verarbeitet ... ${progress}%`));
@@ -285,6 +323,9 @@ export default function App() {
     }
 
     try {
+      if (!requireBackendForUrlImport()) {
+        return;
+      }
       setBusy(true);
       setImportError("");
       setImportStep("Live TV wird geladen ...");
@@ -371,11 +412,11 @@ export default function App() {
           ) : (
             <div className="importForm">
               <label>Server</label>
-              <input className="focusable" placeholder="https://server:port" value={auth.server} onChange={(event) => persist("auth", { ...auth, server: event.target.value }, setAuth)} />
+              <input className="focusable" placeholder="https://server:port" value={auth.server} onChange={(event) => setAuth({ ...auth, server: event.target.value })} />
               <label>Benutzername</label>
-              <input className="focusable" value={auth.username} onChange={(event) => persist("auth", { ...auth, username: event.target.value }, setAuth)} />
+              <input className="focusable" value={auth.username} onChange={(event) => setAuth({ ...auth, username: event.target.value })} />
               <label>Passwort</label>
-              <input className="focusable" type="password" value={auth.password} onChange={(event) => persist("auth", { ...auth, password: event.target.value }, setAuth)} />
+              <input className="focusable" type="password" value={auth.password} onChange={(event) => setAuth({ ...auth, password: event.target.value })} />
               <button className="primary wide focusable" disabled={busy} onClick={importXtream}>{busy ? "Import laeuft ..." : "Xtream laden"}</button>
               <small className="muted">Zugangsdaten bleiben sitzungsbezogen und werden nicht in Quellprofilen gespeichert.</small>
             </div>
@@ -495,6 +536,7 @@ export default function App() {
           {nav.map(([key, label]) => <SectionButton key={key} active={page === key || (key === "live" && page === "player")} onClick={() => { setPage(key); setGroup("Alle"); }}>{label}</SectionButton>)}
         </nav>
       </header>
+      {!backendState.ok ? <div className="offlineBanner">{backendState.message} Import ueber URL, Xtream und Proxy-Wiedergabe pausieren, bis Render online ist.</div> : null}
       {page === "start" ? renderStart() : null}
       {page === "import" ? renderImport() : null}
       {["live", "movies", "series", "favorites"].includes(page) ? renderLibrary() : null}

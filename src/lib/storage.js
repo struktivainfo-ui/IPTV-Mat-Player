@@ -2,6 +2,7 @@ const PREFIX = "iptv_mat_v42_";
 const ITEM_SCHEMA = "items_v1";
 const ITEM_STORAGE_STEPS = [1200, 800, 500, 250];
 const SESSION_ONLY_KEYS = new Set(["auth", "m3uUrl"]);
+const VOLATILE_KEYS = new Set(["auth", "m3uUrl"]);
 const REDACTED_PROFILE_FIELDS = new Set(["password", "m3uUrl"]);
 
 function storageFor(key) {
@@ -95,6 +96,12 @@ function isQuotaError(error) {
 
 export function load(key, fallbackValue) {
   try {
+    if (VOLATILE_KEYS.has(key)) {
+      localStorage.removeItem(`${PREFIX}${key}`);
+      sessionStorage.removeItem(`${PREFIX}${key}`);
+      return fallbackValue;
+    }
+
     if (SESSION_ONLY_KEYS.has(key)) {
       localStorage.removeItem(`${PREFIX}${key}`);
     }
@@ -118,6 +125,12 @@ export function load(key, fallbackValue) {
 export function save(key, value) {
   const storageKey = `${PREFIX}${key}`;
   const safeValue = scrubSensitiveValue(key, value);
+
+  if (VOLATILE_KEYS.has(key)) {
+    localStorage.removeItem(storageKey);
+    sessionStorage.removeItem(storageKey);
+    return { ok: true, warning: "" };
+  }
 
   try {
     storageFor(key).setItem(storageKey, encodeValue(key, safeValue));

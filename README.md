@@ -17,7 +17,7 @@ In Vercel muss diese Environment Variable gesetzt sein:
 VITE_API_URL=https://iptv-mat-backend-v6-6.onrender.com
 ```
 
-`VITE_BACKEND_URL` bleibt nur als Legacy-Fallback erhalten. Neue Builds sollen `VITE_API_URL` verwenden.
+Neue Builds verwenden ausschliesslich `VITE_API_URL`.
 
 ## Backend Env
 

@@ -38,6 +38,7 @@ const ALLOWED_ORIGINS = new Set(
     .map((origin) => origin.trim())
     .filter(Boolean)
 );
+const rateLimitBuckets = new Map();
 
 const db = {
   recordings: [],
@@ -73,6 +74,7 @@ app.use(
   })
 );
 app.use(express.json({ limit: "5mb" }));
+app.use(rateLimit());
 
 function createId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -108,6 +110,35 @@ function redact(value) {
 
 function logInfo(event, meta = {}) {
   console.log(JSON.stringify({ level: "info", event, ...redact(meta) }));
+}
+
+function rateLimit({ windowMs = 60000, max = 180 } = {}) {
+  return (request, response, next) => {
+    const now = Date.now();
+    const key = request.ip || request.headers["x-forwarded-for"] || "unknown";
+    const bucket = rateLimitBuckets.get(key) || { count: 0, resetAt: now + windowMs };
+
+    if (bucket.resetAt <= now) {
+      bucket.count = 0;
+      bucket.resetAt = now + windowMs;
+    }
+
+    bucket.count += 1;
+    rateLimitBuckets.set(key, bucket);
+
+    if (bucket.count > max) {
+      response.status(429).json({
+        ok: false,
+        status: 429,
+        error: "Zu viele Anfragen. Bitte kurz warten und erneut versuchen.",
+        retryAfterSeconds: Math.ceil((bucket.resetAt - now) / 1000),
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    next();
+  };
 }
 
 function loadPersistentDb() {

@@ -9,11 +9,12 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(NativePlayerPlugin.class);
+        registerPlugin(NativeSecureStoragePlugin.class);
         super.onCreate(savedInstanceState);
         WebView webView = getBridge().getWebView();
         WebSettings settings = webView.getSettings();
         settings.setDomStorageEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
     }
 }

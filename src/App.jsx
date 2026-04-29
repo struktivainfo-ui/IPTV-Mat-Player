@@ -4,6 +4,7 @@ import { EmptyState, StatusPanel } from "./components/ui.jsx";
 import { APP_BADGE, categoryKey, DEFAULT_ITEMS, EMPTY_ITEM, itemGroup } from "./lib/appData.js";
 import { BACKEND_URL, checkBackendHealth, createPlaybackUrl, fetchM3UProxy, fetchXtreamProxy, isLikelyHls, isLikelyTs, mapLive, mapSeries, mapVod, parseM3UAsync } from "./lib/importers.js";
 import { isNativeAndroid, openNativePlayer } from "./lib/nativePlayer.js";
+import { secureGet, secureSet } from "./lib/secureStorage.js";
 import { load, save } from "./lib/storage.js";
 
 const LEGAL_NOTICE =
@@ -150,8 +151,8 @@ export default function App() {
   const continueItems = visibleItems.filter((entry) => entry.progress > 0).sort((a, b) => (b.progress || 0) - (a.progress || 0));
   const hasPlaylist = visibleItems.length > 0;
   const heroItem = continueItems[0] || selectedItem || liveItems[0] || movieItems[0] || seriesItems[0] || EMPTY_ITEM;
-  const activeSection = page === "movies" ? "movie" : page === "series" ? "series" : page === "favorites" ? "favorites" : "live";
-  const baseItems = activeSection === "movie" ? movieItems : activeSection === "series" ? seriesItems : activeSection === "favorites" ? favoriteItems : liveItems;
+  const activeSection = page === "movies" || page === "series" ? "media" : page === "favorites" ? "favorites" : "live";
+  const baseItems = activeSection === "media" ? [...movieItems, ...seriesItems] : activeSection === "favorites" ? favoriteItems : liveItems;
   const groups = useMemo(() => ["Alle", ...Array.from(new Set(baseItems.map(itemGroup))).sort((a, b) => a.localeCompare(b, "de"))], [baseItems]);
   const filteredItems = useMemo(
     () =>
@@ -213,6 +214,22 @@ export default function App() {
     }
 
     verifyBackend();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSecureAuth() {
+      const storedAuth = await secureGet("xtreamAuth", null);
+      if (!cancelled && storedAuth?.server && storedAuth?.username && storedAuth?.password) {
+        setAuth(storedAuth);
+      }
+    }
+
+    loadSecureAuth();
     return () => {
       cancelled = true;
     };
@@ -334,6 +351,7 @@ export default function App() {
       const vodData = await fetchXtreamProxy(auth, "get_vod_streams").catch(() => []);
       setImportStep("Serien werden geladen ...");
       const seriesData = await fetchXtreamProxy(auth, "get_series").catch(() => []);
+      await secureSet("xtreamAuth", auth).catch(() => false);
       finishImport([...mapLive(liveData, auth), ...mapVod(vodData, auth), ...mapSeries(seriesData)], "xtream");
     } catch (error) {
       setImportError(error.message);
@@ -428,7 +446,7 @@ export default function App() {
   }
 
   function renderLibrary() {
-    const headline = page === "movies" ? "Filme" : page === "series" ? "Serien" : page === "favorites" ? "Favoriten" : "Live TV";
+    const headline = page === "movies" || page === "series" ? "Filme & Serien" : page === "favorites" ? "Favoriten" : "Live TV";
     return (
       <main className="premiumWorkspace">
         <section className="libraryHero">
@@ -515,13 +533,15 @@ export default function App() {
   }
 
   const nav = [
-    ["start", "Home", true],
     ["live", "Live TV", true],
-    ["movies", "Filme", true],
-    ["series", "Serien", true],
+    ["movies", "Filme & Serien", true],
     ["favorites", "Favoriten", true],
     ["settings", "Einstellungen", true],
   ].filter((entry) => entry[2]);
+  const isNavActive = (key) =>
+    page === key ||
+    (key === "live" && page === "player") ||
+    (key === "movies" && page === "series");
 
   return (
     <div className={`app premiumApp ${tvMode ? "tvMode" : ""}`}>
@@ -533,7 +553,7 @@ export default function App() {
           <small>{APP_BADGE}</small>
         </button>
         <nav className="premiumTopNav" aria-label="Hauptnavigation">
-          {nav.map(([key, label]) => <SectionButton key={key} active={page === key || (key === "live" && page === "player")} onClick={() => { setPage(key); setGroup("Alle"); }}>{label}</SectionButton>)}
+          {nav.map(([key, label]) => <SectionButton key={key} active={isNavActive(key)} onClick={() => { setPage(key); setGroup("Alle"); }}>{label}</SectionButton>)}
         </nav>
       </header>
       {!backendState.ok ? <div className="offlineBanner">{backendState.message} Import ueber URL, Xtream und Proxy-Wiedergabe pausieren, bis Render online ist.</div> : null}
@@ -544,7 +564,7 @@ export default function App() {
       {page === "settings" ? renderSettings() : null}
       {settings.mobileNav ? (
         <footer className="premiumBottomNav">
-          {nav.map(([key, label]) => <SectionButton key={key} active={page === key || (key === "live" && page === "player")} onClick={() => { setPage(key); setGroup("Alle"); }}>{label}</SectionButton>)}
+          {nav.map(([key, label]) => <SectionButton key={key} active={isNavActive(key)} onClick={() => { setPage(key); setGroup("Alle"); }}>{label}</SectionButton>)}
         </footer>
       ) : null}
     </div>

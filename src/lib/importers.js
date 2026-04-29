@@ -1,6 +1,6 @@
 import { arr, fallbackCover, fallbackTrailer, has, safeText, top } from "./appData.js";
 
-export const API_BASE_URL = String(import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || "")
+export const API_BASE_URL = String(import.meta.env.VITE_API_URL || "")
   .trim()
   .replace(/\/+$/, "");
 export const BACKEND_URL = API_BASE_URL;
@@ -107,36 +107,47 @@ function streamUrl(type, server, username, password, id, extension) {
 }
 
 export async function fetchText(url, timeoutMs = 17000, options = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const retries = Number(options.retries ?? 2);
+  let lastError;
 
-  try {
-    const response = await fetch(url, { signal: controller.signal, cache: "no-store", ...options });
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    try {
+      const response = await fetch(url, { signal: controller.signal, cache: "no-store", ...options });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const text = await response.text();
+
+      if (!text) {
+        throw new Error("Leere Antwort vom Server.");
+      }
+
+      return text;
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+        continue;
+      }
+
+      if (error?.name === "AbortError") {
+        throw new Error("Zeitueberschreitung beim Laden.");
+      }
+
+      if (String(error?.message || "").includes("Failed to fetch")) {
+        throw new Error("Verbindung blockiert oder CORS-Problem beim Anbieter.");
+      }
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const text = await response.text();
-
-    if (!text) {
-      throw new Error("Leere Antwort vom Server.");
-    }
-
-    return text;
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      throw new Error("Zeitueberschreitung beim Laden.");
-    }
-
-    if (String(error?.message || "").includes("Failed to fetch")) {
-      throw new Error("Verbindung blockiert oder CORS-Problem beim Anbieter.");
-    }
-
-    throw error;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw lastError;
 }
 
 export async function fetchJson(url, timeoutMs = 17000, options = {}) {

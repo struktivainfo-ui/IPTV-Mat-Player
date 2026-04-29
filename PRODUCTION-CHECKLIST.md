@@ -20,7 +20,7 @@
 - The privacy policy must explain that IPTV source credentials are processed locally and, when configured, through the Render backend proxy.
 - The app must not ship provider credentials, copyrighted playlists, or demo streams.
 - Suggested privacy policy text: "IPTV Mat Player stellt keine Sender, Streams, Playlists oder Inhalte bereit. Nutzer koennen eigene Quellen eintragen. Zugangsdaten werden nur fuer den Import und die Wiedergabe verwendet und nicht fuer Werbezwecke verkauft."
-- Paywall is prepared for `iptv_mat_player_pro_monthly` at `4,99 EUR / Monat`, but the UI must say "Pro bald verfuegbar" until Google Play Billing is fully implemented.
+- Paywall is prepared for yearly `iptv_mat_player_pro_yearly` at `5,99 EUR / Jahr` and lifetime `iptv_mat_player_pro_lifetime` at `24,99 EUR`, but the UI must say "Pro bald verfuegbar" until Google Play Billing is fully implemented.
 
 ## Play Store
 

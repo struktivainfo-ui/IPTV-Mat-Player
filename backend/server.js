@@ -46,8 +46,20 @@ const db = {
     premium: false,
     noAds: false,
     storeConnected: false,
-    productId: "iptv_mat_player_pro_monthly",
-    price: "4,99 EUR / Monat",
+    products: [
+      {
+        id: "iptv_mat_player_pro_yearly",
+        type: "subscription",
+        price: "5,99 EUR / Jahr",
+      },
+      {
+        id: "iptv_mat_player_pro_lifetime",
+        type: "in-app",
+        price: "24,99 EUR Lifetime",
+      },
+    ],
+    productId: "iptv_mat_player_pro_yearly",
+    price: "5,99 EUR / Jahr",
     status: "coming-soon",
   },
   playlists: [],

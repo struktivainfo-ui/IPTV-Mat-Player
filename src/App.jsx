@@ -19,8 +19,10 @@ const DEFAULT_SETTINGS = {
   bufferMode: "strong",
   safeMode: true,
 };
-const PRO_PRODUCT_ID = "iptv_mat_player_pro_monthly";
-const PRO_PRICE = "4,99 EUR / Monat";
+const PRO_YEARLY_PRODUCT_ID = "iptv_mat_player_pro_yearly";
+const PRO_LIFETIME_PRODUCT_ID = "iptv_mat_player_pro_lifetime";
+const PRO_YEARLY_PRICE = "5,99 EUR / Jahr";
+const PRO_LIFETIME_PRICE = "24,99 EUR Lifetime";
 const FREE_FAVORITE_LIMIT = 20;
 
 function SectionButton({ active, children, ...props }) {
@@ -360,7 +362,7 @@ export default function App() {
 
   function toggleFavorite(id) {
     if (!watch.includes(id) && !isPro && watch.length >= FREE_FAVORITE_LIMIT) {
-      notify(`Free Limit erreicht: maximal ${FREE_FAVORITE_LIMIT} Favoriten. Pro fuer ${PRO_PRICE} ist vorbereitet.`);
+      notify(`Free Limit erreicht: maximal ${FREE_FAVORITE_LIMIT} Favoriten. Pro fuer ${PRO_YEARLY_PRICE} oder ${PRO_LIFETIME_PRICE} ist vorbereitet.`);
       setPage("settings");
       return;
     }
@@ -613,8 +615,8 @@ export default function App() {
             <div>
               <span className="goldPill">Pro bald verfuegbar</span>
               <h2>IPTV Mat Pro</h2>
-              <p>4,99 EUR pro Monat. Geplant sind unbegrenzte Favoriten, mehrere Playlists, EPG Cache und Premium Player Optionen.</p>
-              <small>Google Play Billing Produkt-ID: {PRO_PRODUCT_ID}</small>
+              <p>Geplant sind zwei faire Optionen: {PRO_YEARLY_PRICE} oder einmalig {PRO_LIFETIME_PRICE}. Pro schaltet unbegrenzte Favoriten, mehrere Playlists, EPG Cache und Premium Player Optionen frei.</p>
+              <small>Google Play Billing Produkt-IDs: {PRO_YEARLY_PRODUCT_ID} und {PRO_LIFETIME_PRODUCT_ID}</small>
             </div>
             <button className="secondary focusable" disabled>Pro bald verfuegbar</button>
           </div>

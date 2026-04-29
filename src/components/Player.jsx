@@ -37,6 +37,11 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
 
     setError("");
     setBuffering(true);
+    const startupTimeout = setTimeout(() => {
+      if (!cancelled && video.readyState < 2) {
+        handleFail("Stream-Timeout. Der Anbieter antwortet zu langsam oder blockiert die Wiedergabe.");
+      }
+    }, 22000);
 
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -57,11 +62,13 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
       }
     };
     const handleReady = () => {
+      clearTimeout(startupTimeout);
       setBuffering(false);
       onStatusRef.current?.("Player bereit.");
       onDiagnosticRef.current?.({ state: "ready", lastUrl: src, lastError: "", updatedAt: Date.now() });
     };
     const handleFail = (message) => {
+      clearTimeout(startupTimeout);
       setBuffering(false);
       setError(message);
       onStatusRef.current?.(message);
@@ -80,7 +87,7 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
       setBuffering(false);
       onDiagnosticRef.current?.({ state: "playing", lastUrl: src, lastError: "", updatedAt: Date.now() });
     };
-    const handleNativeError = () => handleFail("Video-Element konnte den Stream nicht abspielen.");
+    const handleNativeError = () => handleFail("Video-Element konnte den Stream nicht abspielen. Auf Android bitte den nativen Player nutzen.");
 
     video.addEventListener("timeupdate", handleTimeUpdate);
     video.addEventListener("canplay", handleReady);
@@ -112,6 +119,7 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
           );
 
           player.attachMediaElement(video);
+          player.on?.(mpegts.Events.ERROR, () => handleFail("TS-Stream konnte im WebPlayer nicht stabil geladen werden."));
           player.load();
           tsRef.current = player;
           if (autoplay) {
@@ -150,7 +158,7 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
               return;
             }
 
-            handleFail("HLS-Stream konnte nicht geladen werden.");
+            handleFail("HLS-Stream konnte nicht geladen werden. Bitte Quelle, CORS oder Anbieter-Format pruefen.");
           });
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
             handleReady();
@@ -171,6 +179,7 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
 
     return () => {
       cancelled = true;
+      clearTimeout(startupTimeout);
       video.removeEventListener("timeupdate", handleTimeUpdate);
       video.removeEventListener("canplay", handleReady);
       video.removeEventListener("waiting", handleWaiting);

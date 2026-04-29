@@ -1,5 +1,5 @@
-export const APP_VERSION = "6.7.0";
-export const APP_BADGE = "v6.7 release";
+export const APP_VERSION = "6.8.0";
+export const APP_BADGE = "v6.8 stable";
 
 export const EMPTY_ITEM = {
   id: "empty",
@@ -23,59 +23,8 @@ export const EMPTY_ITEM = {
 export const DEFAULT_ITEMS = [];
 export const FALLBACK_COVERS = [""];
 
-export const EPG_ROWS = [
-  ["18:00", "Live TV", "Programmplatz"],
-  ["20:15", "Film", "Filmplatz"],
-  ["19:00", "News", "Nachrichtenplatz"],
-  ["20:00", "Serien", "Serienplatz"],
-];
-
-export const EPG_EVENTS = [
-  {
-    id: "epg-1",
-    channel: "Live TV",
-    title: "Programmplatz",
-    start: "20:15",
-    end: "22:15",
-    genre: "Sport",
-    type: "live",
-    description: "EPG-Platzhalter fuer importierte Sender.",
-    targetTitle: "Live TV",
-  },
-  {
-    id: "epg-2",
-    channel: "Film",
-    title: "Filmplatz",
-    start: "22:15",
-    end: "00:10",
-    genre: "Film",
-    type: "movie",
-    description: "Planungseintrag. Echte Mitschnitte benoetigen einen Backend-Recorder.",
-    targetTitle: "Film",
-  },
-  {
-    id: "epg-3",
-    channel: "News",
-    title: "Nachrichtenplatz",
-    start: "21:00",
-    end: "22:00",
-    genre: "News",
-    type: "live",
-    description: "EPG-Platzhalter fuer importierte Sender.",
-    targetTitle: "News",
-  },
-  {
-    id: "epg-4",
-    channel: "Serien",
-    title: "Serienplatz",
-    start: "22:45",
-    end: "23:35",
-    genre: "Serie",
-    type: "series",
-    description: "Planungseintrag. Echte Mitschnitte benoetigen einen Backend-Recorder.",
-    targetTitle: "Serien",
-  },
-];
+export const EPG_ROWS = [];
+export const EPG_EVENTS = [];
 
 export function arr(value) {
   return Array.isArray(value) ? value : [];

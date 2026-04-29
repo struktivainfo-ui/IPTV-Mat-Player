@@ -2,20 +2,16 @@ import React, { useState } from "react";
 import { APP_BADGE, EPG_EVENTS, epgDuration, epgNowLabel } from "../lib/appData.js";
 
 export function Login({ onLogin }) {
-  const [user, setUser] = useState("");
-  const [password, setPassword] = useState("");
-
   return (
     <div className="login">
       <div className="loginCard focusable">
         <div className="mark" />
         <div className="badge">{APP_BADGE}</div>
         <h1>IPTV Mat Player</h1>
-        <p>Premium IPTV App mit nativer Android-Wiedergabe, sauberem Import und klarer Stream-Diagnose.</p>
-        <input placeholder="Benutzername" value={user} onChange={(event) => setUser(event.target.value)} />
-        <input placeholder="Passwort" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-        <button className="primary wide" onClick={() => user.trim() && password.trim() && onLogin({ user: user.trim(), time: Date.now() })}>
-          Einloggen
+        <p>Legal nutzbarer IPTV Player. Die App liefert keine Sender, Streams oder Listen mit. Du importierst nur eigene legale Quellen.</p>
+        <div className="infoBox">Login kommt spaeter. Aktuell nutzt du die App lokal auf deinem Geraet ohne Fake-Konto und ohne Zahlungsfunktion.</div>
+        <button className="primary wide" onClick={() => onLogin({ user: "Lokal", mode: "local", time: Date.now() })}>
+          Ohne Konto starten
         </button>
       </div>
     </div>

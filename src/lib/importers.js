@@ -167,6 +167,19 @@ export async function fetchM3UProxy(input) {
   });
 }
 
+function assertM3UText(text) {
+  const rawText = String(text || "");
+  const lower = rawText.slice(0, 800).toLowerCase();
+
+  if (lower.includes("<html") || lower.includes("<!doctype html")) {
+    throw new Error("Der Anbieter hat eine HTML-Seite statt einer M3U-Liste geliefert. Bitte URL, Login oder Portal pruefen.");
+  }
+
+  if (!rawText.includes("#EXTM3U") && !rawText.includes("#EXTINF")) {
+    throw new Error("Keine gueltige M3U-Struktur gefunden. Die Liste muss #EXTM3U oder #EXTINF enthalten.");
+  }
+}
+
 function parseAttrs(line) {
   const attributes = {};
   const regex = /([\w-]+)="([^"]*)"/g;
@@ -193,19 +206,82 @@ function inferSection(title, group, url) {
   return "live";
 }
 
-export function parseM3U(text) {
-  const rawText = String(text || "");
-
-  if (!rawText.includes("#EXTM3U") && !rawText.includes("#EXTINF")) {
-    throw new Error("Keine gueltige M3U-Struktur gefunden. Die Liste muss #EXTM3U oder #EXTINF enthalten.");
-  }
-
+export async function parseM3UAsync(text, onProgress) {
+  assertM3UText(text);
   const lines = String(text || "")
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
 
   const items = [];
+  const seenUrls = new Set();
+  let current = null;
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+
+    if (lineIndex > 0 && lineIndex % 900 === 0) {
+      onProgress?.(Math.min(99, Math.round((lineIndex / lines.length) * 100)));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    if (line.startsWith("#EXTINF")) {
+      const attributes = parseAttrs(line);
+      const commaIndex = line.indexOf(",");
+      const name = commaIndex >= 0 ? line.slice(commaIndex + 1).trim() : "Stream";
+      current = { name, attrs: attributes };
+      continue;
+    }
+
+    if (!line.startsWith("#") && current) {
+      if (seenUrls.has(line)) {
+        current = null;
+        continue;
+      }
+      seenUrls.add(line);
+
+      const title = safeText(current.attrs["tvg-name"] || current.name, "Stream");
+      const group = safeText(current.attrs["group-title"], "M3U");
+      const logo = current.attrs["tvg-logo"] || "";
+      const section = inferSection(title, group, line);
+      const index = items.length;
+
+      items.push({
+        id: `m3u-${Date.now()}-${index}`,
+        title,
+        section,
+        category: group,
+        group,
+        badge: section === "live" ? "Live" : section === "movie" ? "M3U Film" : "M3U Serie",
+        year: "2026",
+        duration: section === "live" ? "Live" : section === "movie" ? "Film" : "Serie",
+        rating: "0+",
+        progress: 0,
+        description: `M3U Import - ${group}`,
+        streamUrl: line,
+        trailerUrl: fallbackTrailer(),
+        cover: logo || fallbackCover(index),
+        tvgId: current.attrs["tvg-id"] || "",
+        source: "m3u",
+      });
+
+      current = null;
+    }
+  }
+
+  onProgress?.(100);
+  return items;
+}
+
+export function parseM3U(text) {
+  assertM3UText(text);
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const items = [];
+  const seenUrls = new Set();
   let current = null;
 
   for (const line of lines) {
@@ -218,6 +294,12 @@ export function parseM3U(text) {
     }
 
     if (!line.startsWith("#") && current) {
+      if (seenUrls.has(line)) {
+        current = null;
+        continue;
+      }
+      seenUrls.add(line);
+
       const title = safeText(current.attrs["tvg-name"] || current.name, "Stream");
       const group = safeText(current.attrs["group-title"], "M3U");
       const logo = current.attrs["tvg-logo"] || "";

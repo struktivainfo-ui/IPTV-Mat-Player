@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { DEMO_ITEMS, EPG_EVENTS, epgDuration, epgNowLabel } from "../lib/appData.js";
+import { APP_BADGE, EPG_EVENTS, epgDuration, epgNowLabel } from "../lib/appData.js";
 
 export function Login({ onLogin }) {
   const [user, setUser] = useState("");
@@ -9,9 +9,9 @@ export function Login({ onLogin }) {
     <div className="login">
       <div className="loginCard focusable">
         <div className="mark" />
-        <div className="badge">v6.6 profiles diagnostics</div>
+        <div className="badge">{APP_BADGE}</div>
         <h1>IPTV Mat Player</h1>
-        <p>Premium Stream Dashboard mit sauberer Architektur, robusterem Import und besserer Wartbarkeit.</p>
+        <p>Premium IPTV App mit nativer Android-Wiedergabe, sauberem Import und klarer Stream-Diagnose.</p>
         <input placeholder="Benutzername" value={user} onChange={(event) => setUser(event.target.value)} />
         <input placeholder="Passwort" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
         <button className="primary wide" onClick={() => user.trim() && password.trim() && onLogin({ user: user.trim(), time: Date.now() })}>
@@ -35,7 +35,7 @@ export function Stat({ l, v, h }) {
 export function Card({ it, onClick, compact, tvMode }) {
   return (
     <button className={`poster focusable ${compact ? "compact" : ""} ${tvMode ? "posterTv" : ""}`} onClick={onClick}>
-      <img src={it.cover} onError={(event) => { event.currentTarget.src = DEMO_ITEMS[0].cover; }} loading="lazy" />
+      {it.cover ? <img src={it.cover} onError={(event) => { event.currentTarget.style.display = "none"; }} loading="lazy" /> : <div className="posterFallback">{it.section || "TV"}</div>}
       <b className="pbadge">{it.badge}</b>
       <div className="ptitle">{it.title}</div>
       <div className="pmeta">
@@ -203,7 +203,7 @@ export function MiniStatus({ busy, autoZap, tvMode, hidden, recordings }) {
       <small>TV: {tvMode ? "An" : "Aus"}</small>
       <small>Zap: {autoZap ? "An" : "Aus"}</small>
       <small>Ausgeblendet: {hidden}</small>
-      <small>REC: {recordings}</small>
+      <small>Planung: {recordings}</small>
     </div>
   );
 }
@@ -240,7 +240,7 @@ export function EpgTimeline({ events, onOpen, onRecord, minutesOf }) {
               </small>
             </button>
             <button className="recordMini focusable" onClick={() => onRecord(event)}>
-              REC
+              Planen
             </button>
           </div>
         );
@@ -250,10 +250,10 @@ export function EpgTimeline({ events, onOpen, onRecord, minutesOf }) {
 }
 
 export function FinalAuditPanel() {
-  const points = ["Smart View Engine", "Import", "EPG", "Auto-Zapping", "Kategorie Manager", "Backend vorbereitet", "TV/Fire-TV UI"];
+  const points = ["Native Player", "Import", "EPG", "Auto-Zapping", "Kategorie Manager", "Backend vorbereitet", "TV/Fire-TV UI"];
   return (
     <section className="finalAuditPanel">
-      <div className="badge">Final Audit</div>
+      <div className="badge">Release Check</div>
       <h3>Systemstatus</h3>
       <div className="auditGrid">{points.map((point) => <span key={point}>OK {point}</span>)}</div>
     </section>
@@ -274,7 +274,7 @@ export function StatusPanel({ status, importStep, importError }) {
 export function FeatureOverview() {
   const features = [
     ["Mediathek", "Live, Filme und Serien in einem klaren Bereich"],
-    ["EPG", "Programm und Aufnahmen zusammen"],
+    ["EPG", "Programm und Planung zusammen"],
     ["Verwalten", "Import, Kategorien und Einstellungen gesammelt"],
     ["TV-Modus", "Fernbedienung und grosse Darstellung"],
   ];
@@ -304,7 +304,7 @@ export function EpgCard({ event, onOpen, onRecord, tvMode }) {
             Details
           </button>
           <button className="secondary focusable" onClick={() => onRecord(event)}>
-            Aufnehmen?
+            Vormerken
           </button>
         </div>
       </div>
@@ -332,7 +332,7 @@ export function SourceProfilesPanel({ profiles, profileName, setProfileName, onS
   return (
     <section className="card">
       <h3>Quellprofile</h3>
-      <p className="muted">Speichere Xtream- oder M3U-Quellen, damit du schnell zwischen Anbietern wechseln kannst.</p>
+      <p className="muted">Profile speichern nur sichere Metadaten. Zugangsdaten bitte beim Laden neu eingeben.</p>
       <input className="focusable" placeholder="Profilname" value={profileName} onChange={(event) => setProfileName(event.target.value)} />
       <button className="secondary focusable" onClick={onSave}>
         Aktuelle Quelle speichern

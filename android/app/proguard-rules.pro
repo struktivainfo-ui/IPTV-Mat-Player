@@ -19,3 +19,10 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# Keep Capacitor plugin entry points and the native playback activity discoverable in release builds.
+-keep class app.vercel.iptvmatplayer.NativePlayerPlugin { *; }
+-keep class app.vercel.iptvmatplayer.NativePlayerActivity { *; }
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+-keepclassmembers class * {
+    @com.getcapacitor.PluginMethod <methods>;
+}

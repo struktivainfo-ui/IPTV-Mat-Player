@@ -1,4 +1,4 @@
-import { arr, fallbackCover, fallbackTrailer, has, safeText, top, DEMO_ITEMS } from "./appData.js";
+import { arr, fallbackCover, fallbackTrailer, has, safeText, top } from "./appData.js";
 
 export const BACKEND_URL = String(import.meta.env.VITE_BACKEND_URL || "")
   .trim()
@@ -6,6 +6,14 @@ export const BACKEND_URL = String(import.meta.env.VITE_BACKEND_URL || "")
 
 function normalizeBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function assertHttpUrl(value, label) {
+  const text = String(value || "").trim();
+  if (!/^https?:\/\/[^/\s]+/i.test(text)) {
+    throw new Error(`${label} ungueltig. Bitte mit http:// oder https:// beginnen.`);
+  }
+  return text;
 }
 
 function backendApi(path) {
@@ -45,11 +53,7 @@ export function createPlaybackUrl(url, source = "") {
 
   const format = detectPlaybackFormat(value);
 
-  if (/^https?:\/\/test-streams\.mux\.dev/i.test(value) || /^https?:\/\/demo\.unified-streaming\.com/i.test(value)) {
-    return value;
-  }
-
-  if (source === "demo") {
+  if (source === "empty") {
     return value;
   }
 
@@ -68,11 +72,11 @@ export function isLikelyTs(url, playbackUrl = "") {
 }
 
 function api(server, username, password, action) {
-  return `${normalizeBaseUrl(server)}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=${action}`;
+  return `${normalizeBaseUrl(assertHttpUrl(server, "Xtream-Server-URL"))}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=${action}`;
 }
 
 function streamUrl(type, server, username, password, id, extension) {
-  return `${normalizeBaseUrl(server)}/${type}/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${id}.${String(extension || "mp4").replace(".", "")}`;
+  return `${normalizeBaseUrl(assertHttpUrl(server, "Xtream-Server-URL"))}/${type}/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${id}.${String(extension || "mp4").replace(".", "")}`;
 }
 
 export async function fetchText(url, timeoutMs = 17000, options = {}) {
@@ -119,6 +123,8 @@ export async function fetchJson(url, timeoutMs = 17000, options = {}) {
 }
 
 export async function fetchXtreamProxy(auth, action) {
+  assertHttpUrl(auth.server, "Xtream-Server-URL");
+
   if (!BACKEND_URL) {
     return fetchJson(api(auth.server, auth.username, auth.password, action));
   }
@@ -140,6 +146,10 @@ export async function fetchM3UProxy(input) {
 
   if (!value) {
     throw new Error("Bitte M3U URL oder M3U Text eingeben.");
+  }
+
+  if (!value.includes("#EXTM3U") && !value.includes("#EXTINF") && !/^https?:\/\/.+/i.test(value)) {
+    throw new Error("M3U-URL ungueltig. Bitte mit http:// oder https:// beginnen oder komplette M3U-Daten einfuegen.");
   }
 
   if (value.includes("#EXTM3U") || value.includes("#EXTINF")) {
@@ -184,6 +194,12 @@ function inferSection(title, group, url) {
 }
 
 export function parseM3U(text) {
+  const rawText = String(text || "");
+
+  if (!rawText.includes("#EXTM3U") && !rawText.includes("#EXTINF")) {
+    throw new Error("Keine gueltige M3U-Struktur gefunden. Die Liste muss #EXTM3U oder #EXTINF enthalten.");
+  }
+
   const lines = String(text || "")
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -298,7 +314,7 @@ export function mapSeries(list) {
         description: safeText(entry.plot, "Importierter Serien-Eintrag."),
         cover: entry.cover || entry.stream_icon || fallbackCover(index + 4),
         trailerUrl: fallbackTrailer(),
-        streamUrl: DEMO_ITEMS[3].streamUrl,
+        streamUrl: "",
         source: "xtream",
       };
     });

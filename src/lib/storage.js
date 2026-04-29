@@ -1,6 +1,29 @@
 const PREFIX = "iptv_mat_v42_";
 const ITEM_SCHEMA = "items_v1";
 const ITEM_STORAGE_STEPS = [1200, 800, 500, 250];
+const SESSION_ONLY_KEYS = new Set(["auth", "m3uUrl"]);
+const REDACTED_PROFILE_FIELDS = new Set(["password", "m3uUrl"]);
+
+function storageFor(key) {
+  return SESSION_ONLY_KEYS.has(key) ? sessionStorage : localStorage;
+}
+
+function scrubSensitiveValue(key, value) {
+  if (key !== "sourceProfiles" || !Array.isArray(value)) {
+    return value;
+  }
+
+  return value.map((profile) => {
+    const nextProfile = { ...profile, protected: true };
+    for (const field of REDACTED_PROFILE_FIELDS) {
+      delete nextProfile[field];
+    }
+    if (nextProfile.username) {
+      nextProfile.username = "***";
+    }
+    return nextProfile;
+  });
+}
 
 function compactItem(item = {}) {
   return {
@@ -72,8 +95,21 @@ function isQuotaError(error) {
 
 export function load(key, fallbackValue) {
   try {
-    const rawValue = localStorage.getItem(`${PREFIX}${key}`);
-    return rawValue ? decodeValue(key, rawValue) : fallbackValue;
+    if (SESSION_ONLY_KEYS.has(key)) {
+      localStorage.removeItem(`${PREFIX}${key}`);
+    }
+    const rawValue = storageFor(key).getItem(`${PREFIX}${key}`);
+    if (!rawValue) {
+      return fallbackValue;
+    }
+
+    const decodedValue = decodeValue(key, rawValue);
+    const safeValue = scrubSensitiveValue(key, decodedValue);
+    if (key === "sourceProfiles") {
+      localStorage.setItem(`${PREFIX}${key}`, encodeValue(key, safeValue));
+    }
+
+    return safeValue;
   } catch {
     return fallbackValue;
   }
@@ -81,12 +117,13 @@ export function load(key, fallbackValue) {
 
 export function save(key, value) {
   const storageKey = `${PREFIX}${key}`;
+  const safeValue = scrubSensitiveValue(key, value);
 
   try {
-    localStorage.setItem(storageKey, encodeValue(key, value));
+    storageFor(key).setItem(storageKey, encodeValue(key, safeValue));
     return { ok: true, warning: "" };
   } catch (error) {
-    if (key !== "items" || !isQuotaError(error) || !Array.isArray(value)) {
+    if (key !== "items" || !isQuotaError(error) || !Array.isArray(safeValue)) {
       throw error;
     }
   }
@@ -95,14 +132,14 @@ export function save(key, value) {
     try {
       const payload = JSON.stringify({
         __kind: ITEM_SCHEMA,
-        truncated: value.length > maxItems,
-        items: value.slice(0, maxItems).map(compactItem),
+        truncated: safeValue.length > maxItems,
+        items: safeValue.slice(0, maxItems).map(compactItem),
       });
-      localStorage.setItem(storageKey, payload);
+      storageFor(key).setItem(storageKey, payload);
       return {
         ok: true,
         warning:
-          value.length > maxItems
+          safeValue.length > maxItems
             ? `Groesse Liste geladen. Fuer den Browser-Cache wurden ${maxItems} Eintraege gespeichert, live sind aber alle geladen.`
             : "",
       };

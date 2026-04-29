@@ -25,6 +25,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Android release signing secrets
+android/keystores/*.jks
+android/release-signing.properties
+
 # system files
 .DS_Store
 Thumbs.db

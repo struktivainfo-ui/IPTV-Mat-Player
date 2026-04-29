@@ -125,9 +125,9 @@
 .tvMode .settingTile b{font-size:24px}
 @media(max-width:620px){.settingsGrid{grid-template-columns:1fr}.settingsPage h2{font-size:28px}}
 
-/* v6.9 Premium UX shell */
+/* v7.0 WOW streaming shell */
 :root{--surface:#090d16;--surface2:#111827;--surface3:#172033;--line:rgba(255,255,255,.10);--accent:#e5093f;--accent2:#2167ff;--focus:#fff}
-body{background:linear-gradient(180deg,#05060a 0%,#090d16 45%,#05060a 100%);font-family:"Segoe UI",Inter,Arial,sans-serif}
+body{background:radial-gradient(circle at 12% -12%,rgba(229,9,63,.25),transparent 34%),radial-gradient(circle at 105% 0%,rgba(33,103,255,.22),transparent 30%),linear-gradient(180deg,#03040a 0%,#090d16 45%,#03040a 100%);font-family:"Segoe UI",Inter,Arial,sans-serif}
 .premiumApp{max-width:1320px;padding:18px 22px 120px;animation:appEnter .28s ease both}
 .premiumApp.tvMode{max-width:1480px;padding:28px 36px 150px}
 @keyframes appEnter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
@@ -136,11 +136,33 @@ body{background:linear-gradient(180deg,#05060a 0%,#090d16 45%,#05060a 100%);font
 .brandButton b{font-size:18px}.brandButton small{color:var(--muted)}.brandMark{width:13px;height:34px;border-radius:999px;background:linear-gradient(180deg,var(--accent),var(--accent2));box-shadow:0 0 28px rgba(229,9,63,.45)}
 .premiumTopNav,.premiumBottomNav,.modeSwitch{display:flex;gap:10px;align-items:center}
 .premiumTopNav{position:static;left:auto;bottom:auto;transform:none;width:auto;padding:0;border:0;background:transparent;backdrop-filter:none;flex-wrap:wrap;justify-content:flex-end}
-.premiumNavBtn,.premiumNavActive{margin:0;border-radius:18px;border:1px solid var(--line);font-weight:800;color:var(--text);background:rgba(255,255,255,.055);min-height:48px;padding:0 18px}
+.premiumNavBtn,.premiumNavActive{margin:0;border-radius:18px;border:1px solid var(--line);font-weight:800;color:var(--text);background:rgba(255,255,255,.055);min-height:48px;padding:0 18px;transition:transform .16s ease,background .16s ease,box-shadow .16s ease}
+.premiumNavBtn:hover,.premiumNavBtn:focus,.premiumNavActive:focus{transform:scale(1.045)}
 .premiumNavActive{background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 12px 34px rgba(33,103,255,.24)}
 .premiumBottomNav{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:12;width:min(920px,calc(100% - 24px));padding:10px;border-radius:28px;background:rgba(8,12,20,.92);border:1px solid var(--line);backdrop-filter:blur(18px);justify-content:stretch}
 .premiumBottomNav button{flex:1}
 .premiumStart{min-height:calc(100svh - 170px);display:grid;place-items:center}
+.wowHome{display:grid;gap:30px;animation:appEnter .34s ease both}
+.wowHero{position:relative;overflow:hidden;min-height:clamp(420px,56svh,680px);display:grid;align-content:end;padding:clamp(28px,5vw,72px);border-radius:46px;background:linear-gradient(155deg,rgba(6,8,15,.10),rgba(6,8,15,.92) 55%,#03040a),radial-gradient(circle at 75% 18%,rgba(33,103,255,.45),transparent 32%),radial-gradient(circle at 20% 20%,rgba(229,9,63,.42),transparent 34%),linear-gradient(135deg,#171d2c,#05060a);border:1px solid rgba(255,255,255,.14);box-shadow:0 42px 120px rgba(0,0,0,.58);isolation:isolate}
+.wowHero::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.08),transparent 24%,transparent 74%,rgba(255,255,255,.05));opacity:.75;pointer-events:none}
+.wowHeroGlow{position:absolute;right:-12%;top:-20%;width:52%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(33,103,255,.36),transparent 63%);filter:blur(18px);z-index:-1}
+.wowHero h1{font-size:clamp(44px,8vw,104px);line-height:.92;letter-spacing:-.07em;margin:18px 0 14px;max-width:950px}
+.wowHero p{max-width:780px;color:#d8e0f2;font-size:clamp(18px,2.4vw,28px);line-height:1.35}
+.legalTiny{font-size:13px!important;color:rgba(216,224,242,.68)!important;margin-top:20px}
+.wowRail{display:grid;gap:14px}
+.railHeading{display:flex;justify-content:space-between;align-items:end;gap:16px}
+.railHeading h2{font-size:clamp(24px,3vw,40px);margin:0;letter-spacing:-.03em}
+.railHeading span{color:var(--muted);font-weight:800}
+.wowCategoryGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.wowCategoryCard{position:relative;overflow:hidden;display:grid;align-content:end;min-height:210px;margin:0;padding:24px;border-radius:34px;text-align:left;color:#fff;border:1px solid rgba(255,255,255,.14);box-shadow:0 22px 70px rgba(0,0,0,.36);transition:transform .18s ease,filter .18s ease,box-shadow .18s ease}
+.wowCategoryCard::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent,rgba(0,0,0,.58));pointer-events:none}
+.wowCategoryCard b,.wowCategoryCard span,.wowCategoryCard small{position:relative;z-index:1}
+.wowCategoryCard b{font-size:clamp(28px,4vw,52px);letter-spacing:-.05em}.wowCategoryCard span{margin-top:8px;font-weight:900}.wowCategoryCard small{color:rgba(255,255,255,.78);margin-top:4px}
+.wowCategoryCard:hover,.wowCategoryCard:focus{transform:scale(1.035) translateY(-4px);filter:saturate(1.15);box-shadow:0 30px 92px rgba(0,0,0,.48)}
+.wowCategory-live{background:radial-gradient(circle at 25% 15%,rgba(255,255,255,.18),transparent 30%),linear-gradient(135deg,#e5093f,#35101d 70%)}
+.wowCategory-movies{background:radial-gradient(circle at 75% 12%,rgba(255,255,255,.18),transparent 30%),linear-gradient(135deg,#2167ff,#0c193d 72%)}
+.wowCategory-series{background:radial-gradient(circle at 20% 20%,rgba(255,255,255,.18),transparent 30%),linear-gradient(135deg,#12b886,#071d1a 72%)}
+.wowCategoryCard:disabled{opacity:.48;filter:grayscale(.2);cursor:not-allowed}
 .startPoster{width:min(980px,100%);padding:54px;border-radius:42px;background:radial-gradient(circle at 15% 10%,rgba(229,9,63,.24),transparent 35%),radial-gradient(circle at 85% 5%,rgba(33,103,255,.22),transparent 34%),linear-gradient(145deg,#111827,#070a12);border:1px solid var(--line);box-shadow:0 28px 90px rgba(0,0,0,.48)}
 .startPoster h1,.libraryHero h1,.importHead h1,.playerScreen h1,.settingsPage h1{font-size:clamp(38px,7vw,84px);line-height:.95;margin:20px 0 16px;letter-spacing:-.055em}
 .startPoster p,.libraryHero p,.importHead p{max-width:760px;color:#cbd5e1;font-size:clamp(17px,2.4vw,25px);line-height:1.42}
@@ -153,7 +175,7 @@ body{background:linear-gradient(180deg,#05060a 0%,#090d16 45%,#05060a 100%);font
 .premiumFilters{display:grid;grid-template-columns:1fr 260px;gap:14px;padding:12px;border-radius:26px;background:rgba(255,255,255,.045);border:1px solid var(--line)}
 .premiumFilters input,.premiumFilters select,.importForm input,.importForm textarea{background:#0d1422;border-color:rgba(255,255,255,.12)}
 .virtualList{display:grid;gap:10px;content-visibility:auto;contain-intrinsic-size:900px}
-.streamTile{display:grid;grid-template-columns:70px 1fr auto;gap:14px;align-items:center;width:100%;min-height:88px;margin:0;padding:12px;border-radius:24px;text-align:left;color:var(--text);background:rgba(255,255,255,.045);border:1px solid transparent;transition:transform .16s ease,border-color .16s ease,background .16s ease}
+.streamTile{display:grid;grid-template-columns:70px 1fr auto;gap:14px;align-items:center;width:100%;min-height:88px;margin:0;padding:12px;border-radius:24px;text-align:left;color:var(--text);background:rgba(255,255,255,.045);border:1px solid transparent;transition:transform .16s ease,border-color .16s ease,background .16s ease,box-shadow .16s ease}
 .streamTile:hover,.streamTile:focus{transform:translateY(-1px);background:rgba(255,255,255,.085);border-color:rgba(255,255,255,.22)}
 .streamTileActive{border-color:rgba(33,103,255,.8);box-shadow:inset 0 0 0 1px rgba(33,103,255,.28)}
 .streamLogo{width:70px;height:70px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(229,9,63,.32),rgba(33,103,255,.32));overflow:hidden;font-weight:900}
@@ -163,10 +185,14 @@ body{background:linear-gradient(180deg,#05060a 0%,#090d16 45%,#05060a 100%);font
 .loadMore{width:100%;min-height:58px;border-radius:22px;background:rgba(255,255,255,.075);border:1px solid var(--line);color:var(--text);font-weight:900}
 .premiumImport{display:grid;gap:18px}.importHead,.importShell,.playerScreen{padding:28px;border-radius:34px;background:rgba(255,255,255,.045);border:1px solid var(--line)}
 .importShell{display:grid;gap:18px}.importForm{display:grid;gap:8px}.importForm label{font-weight:900;color:#dbe7ff;margin-top:6px}.importForm textarea{min-height:180px}
-.playerScreen{display:grid;gap:12px}.playerScreen .player{border-radius:30px;min-height:280px}.legalNotice{border-color:rgba(229,9,63,.28);background:linear-gradient(135deg,rgba(229,9,63,.11),rgba(33,103,255,.06))}
+.playerScreen{min-height:calc(100svh - 130px);display:grid;gap:12px;align-content:start;background:radial-gradient(circle at 50% 0%,rgba(33,103,255,.16),transparent 34%),#000;border-color:rgba(255,255,255,.16);box-shadow:0 40px 120px rgba(0,0,0,.72)}.playerScreen h1{font-size:clamp(30px,5vw,72px)}.playerScreen .player{border-radius:30px;min-height:280px;box-shadow:0 0 0 1px rgba(255,255,255,.12),0 34px 110px rgba(0,0,0,.78)}.legalNotice{border-color:rgba(229,9,63,.28);background:linear-gradient(135deg,rgba(229,9,63,.11),rgba(33,103,255,.06))}
 .categoryManager{display:flex;gap:10px;flex-wrap:wrap}.categoryPill{border-radius:999px;background:rgba(255,255,255,.07);border:1px solid var(--line);color:var(--text)}.categoryPill span{color:var(--muted);margin-left:8px}.categoryHidden{opacity:.55}
 .premiumApp .settingsPage{padding-bottom:18px}.premiumApp .settingsGroup{background:rgba(255,255,255,.045);border-color:var(--line);box-shadow:none}
 .premiumApp button:disabled{opacity:.42}.premiumApp .primary{background:linear-gradient(135deg,var(--accent),var(--accent2));font-weight:900}.premiumApp .secondary{background:rgba(255,255,255,.075);border:1px solid var(--line);font-weight:900}
-.premiumApp button:focus,.premiumApp input:focus,.premiumApp select:focus,.premiumApp textarea:focus,.premiumApp .focusable:focus{outline:4px solid var(--focus);outline-offset:4px;box-shadow:0 0 0 9px rgba(33,103,255,.35)}
+.premiumApp button:focus,.premiumApp input:focus,.premiumApp select:focus,.premiumApp textarea:focus,.premiumApp .focusable:focus{outline:5px solid var(--focus);outline-offset:5px;box-shadow:0 0 0 11px rgba(33,103,255,.42),0 0 44px rgba(229,9,63,.28)}
+.premiumApp button:active{transform:scale(.985)}
+.premiumApp .playerOverlay{left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:14px;font-size:20px;font-weight:900;padding:18px 24px;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.18);box-shadow:0 20px 60px rgba(0,0,0,.55)}
+.playerSpinner{width:22px;height:22px;border-radius:50%;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .premiumApp.tvMode .premiumNavBtn,.premiumApp.tvMode .premiumNavActive{font-size:24px;min-height:68px;border-radius:28px}.premiumApp.tvMode .streamTile{grid-template-columns:100px 1fr auto;min-height:124px;border-radius:34px;padding:18px}.premiumApp.tvMode .streamLogo{width:100px;height:100px;border-radius:28px}.premiumApp.tvMode .streamText b{font-size:28px}.premiumApp.tvMode .streamText small{font-size:20px}.premiumApp.tvMode .hugeAction{font-size:28px;min-height:82px;border-radius:30px}
-@media(max-width:780px){.premiumApp{padding:12px 12px 108px}.premiumTop{display:grid}.premiumTopNav{display:none}.startPoster,.libraryHero,.importHead,.importShell,.playerScreen{border-radius:28px;padding:22px}.libraryHero{grid-template-columns:1fr;min-height:auto}.premiumFilters{grid-template-columns:1fr}.streamTile{grid-template-columns:54px 1fr;gap:10px}.streamLogo{width:54px;height:54px;border-radius:16px}.streamActions{grid-column:1/-1;justify-content:stretch}.streamActions button{flex:1}.streamBadge{display:none}.premiumBottomNav{gap:6px}.premiumBottomNav button{font-size:12px;padding:10px 6px;min-height:48px}.hugeAction{width:100%}}
+@media(max-width:780px){.premiumApp{padding:12px 12px 108px}.premiumTop{display:grid}.premiumTopNav{display:none}.startPoster,.libraryHero,.importHead,.importShell,.playerScreen,.wowHero{border-radius:28px;padding:22px}.libraryHero{grid-template-columns:1fr;min-height:auto}.premiumFilters{grid-template-columns:1fr}.streamTile{grid-template-columns:54px 1fr;gap:10px}.streamLogo{width:54px;height:54px;border-radius:16px}.streamActions{grid-column:1/-1;justify-content:stretch}.streamActions button{flex:1}.streamBadge{display:none}.premiumBottomNav{gap:6px;overflow-x:auto;justify-content:flex-start}.premiumBottomNav button{font-size:12px;padding:10px 12px;min-height:48px;min-width:92px}.hugeAction{width:100%}.wowCategoryGrid{grid-template-columns:1fr}.wowCategoryCard{min-height:150px}.railHeading{display:grid}}

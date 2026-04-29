@@ -33,7 +33,7 @@ function StreamTile({ item, active, favorite, onOpen, onPlay, onToggleFavorite, 
       <div className="streamLogo">{item.cover ? <img src={item.cover} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <span>{String(item.title || "TV").slice(0, 2).toUpperCase()}</span>}</div>
       <div className="streamText">
         <b>{item.title}</b>
-        <small>{itemGroup(item)} · {item.source || "Import"}</small>
+        <small>{itemGroup(item)} - {item.source || "Import"}</small>
       </div>
       <div className="streamActions">
         <span className="streamBadge">{item.section === "movie" ? "Film" : item.section === "series" ? "Serie" : "Live"}</span>
@@ -84,13 +84,39 @@ function VirtualStreamList({ items, selectedId, watch, onSelect, onPlay, onToggl
   );
 }
 
+function CategoryRail({ liveCount, movieCount, seriesCount, onOpen }) {
+  const entries = [
+    ["live", "Live TV", liveCount, "Sender live starten"],
+    ["movies", "Filme", movieCount, "VOD Filme ansehen"],
+    ["series", "Serien", seriesCount, "Serien-Bereich oeffnen"],
+  ];
+
+  return (
+    <section className="wowRail">
+      <div className="railHeading">
+        <h2>Live TV Kategorien</h2>
+        <span>Live TV · Filme · Serien</span>
+      </div>
+      <div className="wowCategoryGrid">
+        {entries.map(([key, title, count, text]) => (
+          <button key={key} className={`wowCategoryCard focusable wowCategory-${key}`} onClick={() => onOpen(key)} disabled={!count}>
+            <b>{title}</b>
+            <span>{count ? `${count} Eintraege` : "Noch keine Daten"}</span>
+            <small>{count ? text : "Nach Import sichtbar"}</small>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function App() {
   const [items, setItems] = useState(() => load("items", DEFAULT_ITEMS));
   const [selected, setSelected] = useState(() => load("selected", ""));
   const [watch, setWatch] = useState(() => load("watch", []));
   const [hiddenCategories, setHiddenCategories] = useState(() => load("hiddenCategories", []));
   const [settings, setSettings] = useState(() => load("settings", DEFAULT_SETTINGS));
-  const [page, setPage] = useState(() => (load("items", DEFAULT_ITEMS).length ? "live" : "start"));
+  const [page, setPage] = useState("start");
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("Alle");
   const [busy, setBusy] = useState(false);
@@ -114,11 +140,13 @@ export default function App() {
   const visibleItems = useMemo(() => items.filter((entry) => !hiddenSet.has(categoryKey(entry))), [items, hiddenSet]);
   const liveItems = visibleItems.filter((entry) => entry.section === "live");
   const movieItems = visibleItems.filter((entry) => entry.section === "movie");
+  const seriesItems = visibleItems.filter((entry) => entry.section === "series");
   const favoriteItems = visibleItems.filter((entry) => watch.includes(entry.id));
   const continueItems = visibleItems.filter((entry) => entry.progress > 0).sort((a, b) => (b.progress || 0) - (a.progress || 0));
   const hasPlaylist = visibleItems.length > 0;
-  const activeSection = page === "movies" ? "movie" : page === "favorites" ? "favorites" : "live";
-  const baseItems = activeSection === "movie" ? movieItems : activeSection === "favorites" ? favoriteItems : liveItems;
+  const heroItem = continueItems[0] || selectedItem || liveItems[0] || movieItems[0] || seriesItems[0] || EMPTY_ITEM;
+  const activeSection = page === "movies" ? "movie" : page === "series" ? "series" : page === "favorites" ? "favorites" : "live";
+  const baseItems = activeSection === "movie" ? movieItems : activeSection === "series" ? seriesItems : activeSection === "favorites" ? favoriteItems : liveItems;
   const groups = useMemo(() => ["Alle", ...Array.from(new Set(baseItems.map(itemGroup))).sort((a, b) => a.localeCompare(b, "de"))], [baseItems]);
   const filteredItems = useMemo(
     () =>
@@ -291,22 +319,28 @@ export default function App() {
   }
 
   function renderStart() {
+    const canContinue = hasPlaylist && heroItem.streamUrl;
+
     return (
-      <main className="premiumStart">
-        <section className="startPoster">
+      <main className="wowHome">
+        <section className="wowHero focusable" tabIndex="0">
+          <div className="wowHeroGlow" />
           <div className="badge">{APP_BADGE}</div>
-          <h1>IPTV Mat Player</h1>
-          <p>{LEGAL_NOTICE}</p>
+          <span className="eyebrow">Weiter schauen</span>
+          <h1>{canContinue ? heroItem.title : "Deine IPTV Welt wartet"}</h1>
+          <p>{canContinue ? `${itemGroup(heroItem)} - sofort weiter abspielen` : "Fuege deine eigene Playlist hinzu und starte direkt in Live TV, Filme und Serien."}</p>
           <div className="startActions">
-            <button className="primary hugeAction focusable" onClick={() => setPage("import")}>
-              Playlist hinzufuegen
-            </button>
-            <button className="secondary hugeAction focusable" disabled={!continueItems.length} onClick={() => continueItems[0] && playItem(continueItems[0])}>
+            <button className="primary hugeAction focusable" disabled={!canContinue} onClick={() => playItem(heroItem)}>
               Weiter schauen
             </button>
+            <button className="secondary hugeAction focusable" onClick={() => setPage("import")}>
+              Playlist hinzufuegen
+            </button>
           </div>
-          {!hasPlaylist ? <div className="softHint">Noch keine Playlist vorhanden. Fuege deine eigene M3U/M3U8- oder Xtream-Quelle hinzu.</div> : null}
+          <p className="legalTiny">{LEGAL_NOTICE}</p>
         </section>
+        <CategoryRail liveCount={liveItems.length} movieCount={movieItems.length} seriesCount={seriesItems.length} onOpen={(key) => setPage(key)} />
+        {!hasPlaylist ? <div className="softHint">Noch keine Playlist vorhanden. Der Import ist der erste Schritt, danach erscheint hier sofort dein Premium-Startscreen.</div> : null}
       </main>
     );
   }
@@ -352,14 +386,14 @@ export default function App() {
   }
 
   function renderLibrary() {
-    const headline = page === "movies" ? "Filme" : page === "favorites" ? "Favoriten" : "Live TV";
+    const headline = page === "movies" ? "Filme" : page === "series" ? "Serien" : page === "favorites" ? "Favoriten" : "Live TV";
     return (
       <main className="premiumWorkspace">
         <section className="libraryHero">
           <div>
             <span className="eyebrow">{headline}</span>
             <h1>{selectedItem.title || headline}</h1>
-            <p>{hasPlaylist ? `${filteredItems.length} sichtbar · ${visibleItems.length} importiert` : "Fuege zuerst eine eigene Playlist hinzu."}</p>
+            <p>{hasPlaylist ? `${filteredItems.length} sichtbar - ${visibleItems.length} importiert` : "Fuege zuerst eine eigene Playlist hinzu."}</p>
           </div>
           <div className="heroActions">
             <button className="primary hugeAction focusable" disabled={!selectedItem.streamUrl} onClick={() => playItem(selectedItem)}>
@@ -387,7 +421,7 @@ export default function App() {
       <main className="playerScreen">
         <button className="ghostBtn focusable" onClick={() => setPage("live")}>Zurueck</button>
         <h1>{selectedItem.title}</h1>
-        <p className="muted">{itemGroup(selectedItem)} · {selectedItem.source || "Import"}</p>
+        <p className="muted">{itemGroup(selectedItem)} - {selectedItem.source || "Import"}</p>
         {selectedItem.streamUrl ? (
           <Player src={selectedPlaybackUrl} preferHls={selectedPreferHls} preferTs={selectedPreferTs} autoplay={settings.autoplay} onProgress={updateProgress} onStatus={setStatus} onDiagnostic={() => {}} tvMode={tvMode} />
         ) : (
@@ -409,7 +443,7 @@ export default function App() {
             <button className={`settingTile focusable ${settings.playerMode === "native" ? "settingActive" : ""}`} onClick={() => updateSetting("playerMode", "native")}><b>Nativer Player</b><small>Android / Fire TV bevorzugt</small></button>
             <button className={`settingTile focusable ${settings.playerMode === "web" ? "settingActive" : ""}`} onClick={() => updateSetting("playerMode", "web")}><b>WebPlayer</b><small>Fallback in WebView</small></button>
             <button className={`settingTile focusable ${settings.autoplay ? "settingActive" : ""}`} onClick={() => updateSetting("autoplay", !settings.autoplay)}><b>Autoplay</b><small>Stream direkt starten</small></button>
-            <button className={`settingTile focusable ${settings.tvMode ? "settingActive" : ""}`} onClick={() => updateSetting("tvMode", !settings.tvMode)}><b>TV Modus</b><small>Große Fokus-Navigation</small></button>
+            <button className={`settingTile focusable ${settings.tvMode ? "settingActive" : ""}`} onClick={() => updateSetting("tvMode", !settings.tvMode)}><b>TV Modus</b><small>Grosse Fokus-Navigation</small></button>
           </div>
         </section>
         <section className="settingsGroup">
@@ -439,8 +473,10 @@ export default function App() {
   }
 
   const nav = [
+    ["start", "Home", true],
     ["live", "Live TV", true],
-    ["movies", "Filme", movieItems.length > 0],
+    ["movies", "Filme", true],
+    ["series", "Serien", true],
     ["favorites", "Favoriten", true],
     ["settings", "Einstellungen", true],
   ].filter((entry) => entry[2]);
@@ -460,7 +496,7 @@ export default function App() {
       </header>
       {page === "start" ? renderStart() : null}
       {page === "import" ? renderImport() : null}
-      {["live", "movies", "favorites"].includes(page) ? renderLibrary() : null}
+      {["live", "movies", "series", "favorites"].includes(page) ? renderLibrary() : null}
       {page === "player" ? renderPlayer() : null}
       {page === "settings" ? renderSettings() : null}
       {settings.mobileNav ? (

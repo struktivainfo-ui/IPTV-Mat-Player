@@ -212,7 +212,7 @@ export default function Player({ src, autoplay, onProgress, onStatus, onEnded, o
           TV Vollbild
         </button>
       ) : null}
-      {buffering ? <div className="playerOverlay">Buffering ...</div> : null}
+      {buffering ? <div className="playerOverlay"><span className="playerSpinner" /> Stream startet ...</div> : null}
       {error ? <div className="errorBox">{error}</div> : null}
     </div>
   );

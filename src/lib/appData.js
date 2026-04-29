@@ -1,5 +1,5 @@
-export const APP_VERSION = "7.0.0";
-export const APP_BADGE = "v7.0 WOW";
+export const APP_VERSION = "7.5.0";
+export const APP_BADGE = "v7.5 Experience";
 
 export const EMPTY_ITEM = {
   id: "empty",

@@ -325,6 +325,7 @@ export default function App() {
       <main className="wowHome">
         <section className="wowHero focusable" tabIndex="0">
           <div className="wowHeroGlow" />
+          <div className="heroAurora" />
           <div className="badge">{APP_BADGE}</div>
           <span className="eyebrow">Weiter schauen</span>
           <h1>{canContinue ? heroItem.title : "Deine IPTV Welt wartet"}</h1>
@@ -423,7 +424,7 @@ export default function App() {
         <h1>{selectedItem.title}</h1>
         <p className="muted">{itemGroup(selectedItem)} - {selectedItem.source || "Import"}</p>
         {selectedItem.streamUrl ? (
-          <Player src={selectedPlaybackUrl} preferHls={selectedPreferHls} preferTs={selectedPreferTs} autoplay={settings.autoplay} onProgress={updateProgress} onStatus={setStatus} onDiagnostic={() => {}} tvMode={tvMode} />
+          <div className="cinemaFrame"><Player src={selectedPlaybackUrl} preferHls={selectedPreferHls} preferTs={selectedPreferTs} autoplay={settings.autoplay} onProgress={updateProgress} onStatus={setStatus} onDiagnostic={() => {}} tvMode={tvMode} /></div>
         ) : (
           <EmptyState title="Kein Stream ausgewaehlt" text="Waehle zuerst einen Sender aus deiner Playlist." action="Live TV" onClick={() => setPage("live")} />
         )}

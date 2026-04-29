@@ -196,3 +196,39 @@ body{background:radial-gradient(circle at 12% -12%,rgba(229,9,63,.25),transparen
 @keyframes spin{to{transform:rotate(360deg)}}
 .premiumApp.tvMode .premiumNavBtn,.premiumApp.tvMode .premiumNavActive{font-size:24px;min-height:68px;border-radius:28px}.premiumApp.tvMode .streamTile{grid-template-columns:100px 1fr auto;min-height:124px;border-radius:34px;padding:18px}.premiumApp.tvMode .streamLogo{width:100px;height:100px;border-radius:28px}.premiumApp.tvMode .streamText b{font-size:28px}.premiumApp.tvMode .streamText small{font-size:20px}.premiumApp.tvMode .hugeAction{font-size:28px;min-height:82px;border-radius:30px}
 @media(max-width:780px){.premiumApp{padding:12px 12px 108px}.premiumTop{display:grid}.premiumTopNav{display:none}.startPoster,.libraryHero,.importHead,.importShell,.playerScreen,.wowHero{border-radius:28px;padding:22px}.libraryHero{grid-template-columns:1fr;min-height:auto}.premiumFilters{grid-template-columns:1fr}.streamTile{grid-template-columns:54px 1fr;gap:10px}.streamLogo{width:54px;height:54px;border-radius:16px}.streamActions{grid-column:1/-1;justify-content:stretch}.streamActions button{flex:1}.streamBadge{display:none}.premiumBottomNav{gap:6px;overflow-x:auto;justify-content:flex-start}.premiumBottomNav button{font-size:12px;padding:10px 12px;min-height:48px;min-width:92px}.hugeAction{width:100%}.wowCategoryGrid{grid-template-columns:1fr}.wowCategoryCard{min-height:150px}.railHeading{display:grid}}
+
+/* v7.5 emotional motion and polish */
+:root{--ease-out:cubic-bezier(.16,1,.3,1);--ease-soft:cubic-bezier(.22,.61,.36,1)}
+.premiumApp{animation:experienceFade .42s var(--ease-out) both}
+.wowHome,.premiumWorkspace,.premiumImport,.playerScreen,.settingsPage{animation:screenFloat .34s var(--ease-out) both;will-change:opacity,transform}
+@keyframes experienceFade{from{opacity:0;filter:blur(8px)}to{opacity:1;filter:blur(0)}}
+@keyframes screenFloat{from{opacity:0;transform:translateY(18px) scale(.985);filter:blur(8px)}to{opacity:1;transform:none;filter:blur(0)}}
+.heroAurora{position:absolute;inset:-25%;z-index:-1;background:conic-gradient(from 180deg at 50% 50%,rgba(229,9,63,.20),rgba(33,103,255,.18),rgba(18,184,134,.13),rgba(229,9,63,.20));filter:blur(42px);opacity:.75;animation:auroraDrift 9s var(--ease-soft) infinite alternate}
+@keyframes auroraDrift{from{transform:translate3d(-2%,1%,0) rotate(-5deg) scale(1)}to{transform:translate3d(3%,-2%,0) rotate(8deg) scale(1.08)}}
+.wowHero{transition:transform .28s var(--ease-out),box-shadow .28s var(--ease-out),border-color .28s var(--ease-out)}
+.wowHero:focus{transform:scale(1.012);border-color:rgba(255,255,255,.34);box-shadow:0 54px 140px rgba(0,0,0,.68),0 0 0 1px rgba(255,255,255,.18),0 0 70px rgba(33,103,255,.25)}
+.wowHero .badge,.wowHero .eyebrow,.wowHero h1,.wowHero p,.wowHero .startActions{animation:heroRise .52s var(--ease-out) both}
+.wowHero .eyebrow{animation-delay:.04s}.wowHero h1{animation-delay:.08s}.wowHero p{animation-delay:.12s}.wowHero .startActions{animation-delay:.16s}
+@keyframes heroRise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+.premiumApp button,.streamTile,.wowCategoryCard,.settingTile,.categoryPill{transform-origin:center;transition:transform .18s var(--ease-out),box-shadow .18s var(--ease-out),background .18s var(--ease-out),border-color .18s var(--ease-out),opacity .18s var(--ease-out)}
+.premiumApp button:hover:not(:disabled),.settingTile:hover,.categoryPill:hover{transform:translateY(-2px) scale(1.018)}
+.premiumApp button:active:not(:disabled),.streamTile:active,.wowCategoryCard:active{transform:scale(.965);filter:brightness(1.18)}
+.premiumApp button:disabled{filter:saturate(.55);transform:none!important}
+.premiumNavBtn:hover,.premiumNavBtn:focus,.premiumNavActive:focus{box-shadow:0 18px 44px rgba(0,0,0,.34),0 0 36px rgba(33,103,255,.22)}
+.streamTile:focus{transform:scale(1.018) translateY(-2px);box-shadow:0 24px 72px rgba(0,0,0,.42),0 0 42px rgba(33,103,255,.20)}
+.streamLogo{transition:transform .18s var(--ease-out),box-shadow .18s var(--ease-out)}
+.streamTile:focus .streamLogo,.streamTile:hover .streamLogo{transform:scale(1.07);box-shadow:0 0 34px rgba(33,103,255,.24)}
+.wowCategoryCard:focus{box-shadow:0 34px 104px rgba(0,0,0,.56),0 0 0 1px rgba(255,255,255,.24),0 0 64px rgba(229,9,63,.22)}
+.hugeAction{box-shadow:0 16px 46px rgba(0,0,0,.30)}
+.hugeAction:focus{box-shadow:0 22px 68px rgba(0,0,0,.44),0 0 50px rgba(229,9,63,.24)}
+.toast{animation:toastIn .28s var(--ease-out) both}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,-12px) scale(.96)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+.errorBox,.infoBox,.emptyState,.statusPanel{animation:softReveal .26s var(--ease-out) both}
+@keyframes softReveal{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.cinemaFrame{position:relative;border-radius:34px;padding:1px;background:linear-gradient(135deg,rgba(255,255,255,.20),rgba(33,103,255,.10),rgba(229,9,63,.12));box-shadow:0 34px 130px rgba(0,0,0,.72)}
+.cinemaFrame::before{content:"";position:absolute;inset:-30px;border-radius:48px;background:radial-gradient(circle at 50% 0%,rgba(33,103,255,.20),transparent 52%);filter:blur(22px);z-index:-1}
+.playerScreen .ghostBtn{justify-self:start}
+.playerScreen .muted{font-size:clamp(16px,2vw,22px);letter-spacing:.02em}
+.premiumApp .playerOverlay{animation:playerLoadIn .24s var(--ease-out) both}
+@keyframes playerLoadIn{from{opacity:0;transform:translate(-50%,-44%) scale(.92)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}

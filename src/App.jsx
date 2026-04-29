@@ -7,10 +7,7 @@ import {
   EmptyState,
   EpgCard,
   EpgTimeline,
-  FeatureOverview,
-  FinalAuditPanel,
   Login,
-  MiniStatus,
   ProgramGuide,
   ProgramRow,
   RecordingCard,
@@ -18,7 +15,6 @@ import {
   SourceProfilesPanel,
   Stat,
   StatusPanel,
-  StreamDiagnosticsPanel,
   EPG_EVENTS,
 } from "./components/ui.jsx";
 import {
@@ -51,8 +47,15 @@ export default function App() {
       trailer: true,
       motion: true,
       sort: "name",
+      language: "de",
       tvMode: false,
       tvDensity: "large",
+      deviceMode: "auto",
+      mobileNav: true,
+      playerMode: "native",
+      playerFit: "contain",
+      startFullscreen: false,
+      bufferMode: "normal",
       safeMode: true,
     })
   );
@@ -153,6 +156,81 @@ export default function App() {
     [epgSearch, epgFilter]
   );
   const epgGenres = useMemo(() => ["Alle", ...Array.from(new Set(EPG_EVENTS.map((entry) => entry.genre))).sort((a, b) => a.localeCompare(b, "de"))], []);
+  const language = settings.language === "en" ? "en" : "de";
+  const copy = {
+    de: {
+      start: "Start",
+      library: "Mediathek",
+      myList: "Meine Liste",
+      import: "Import",
+      settings: "Einstellungen",
+      openCurrent: "Aktuellen Inhalt oeffnen",
+      tvOn: "TV-Modus an",
+      tvOff: "TV-Modus aus",
+      manage: "Verwalten",
+      categories: "Kategorien",
+      playerSettings: "Player Einstellungen",
+      tvSettings: "TV Einstellungen",
+      phoneSettings: "Handy Einstellungen",
+      languageSettings: "Sprache",
+      german: "Deutsch",
+      english: "Englisch",
+      autoplay: "Autoplay",
+      nativePlayer: "Nativer Player",
+      fullscreen: "Vollbild beim Start",
+      fitContain: "Anpassen",
+      fitCover: "Fuellen",
+      bufferEco: "Sparsam",
+      bufferNormal: "Normal",
+      bufferStrong: "Stabil",
+      large: "Gross",
+      xl: "Extra gross",
+      compact: "Kompakte Listen",
+      animations: "Animationen",
+      adult: "16+ ausblenden",
+      safeDelete: "Loesch-Schutz",
+      clearProgress: "Fortschritt loeschen",
+      clearApp: "App-Inhalte leeren",
+      importSettings: "Import & Quellen",
+      appSettings: "App Einstellungen",
+    },
+    en: {
+      start: "Home",
+      library: "Library",
+      myList: "My List",
+      import: "Import",
+      settings: "Settings",
+      openCurrent: "Open current item",
+      tvOn: "TV mode on",
+      tvOff: "TV mode off",
+      manage: "Manage",
+      categories: "Categories",
+      playerSettings: "Player settings",
+      tvSettings: "TV settings",
+      phoneSettings: "Phone settings",
+      languageSettings: "Language",
+      german: "German",
+      english: "English",
+      autoplay: "Autoplay",
+      nativePlayer: "Native player",
+      fullscreen: "Start fullscreen",
+      fitContain: "Fit",
+      fitCover: "Fill",
+      bufferEco: "Low buffer",
+      bufferNormal: "Normal",
+      bufferStrong: "Stable",
+      large: "Large",
+      xl: "Extra large",
+      compact: "Compact lists",
+      animations: "Animations",
+      adult: "Hide 16+",
+      safeDelete: "Delete protection",
+      clearProgress: "Clear progress",
+      clearApp: "Clear app content",
+      importSettings: "Import & sources",
+      appSettings: "App settings",
+    },
+  }[language];
 
   useEffect(() => {
     const onKey = (event) => {
@@ -217,6 +295,10 @@ export default function App() {
     const result = save(key, value);
     setter(value);
     return result;
+  }
+
+  function updateSetting(key, value) {
+    persist("settings", { ...settings, [key]: value }, setSettings);
   }
 
   function notify(message) {
@@ -622,16 +704,14 @@ export default function App() {
         </button>
       </header>
       {toast ? <div className="toast">{toast}</div> : null}
-      <MiniStatus busy={busy} autoZap={autoZap} tvMode={tvMode} hidden={hiddenCategories.length} recordings={recordings.length} />
       {page === "home" ? (
         <>
-          <FinalAuditPanel />
           <section className="cleanHub">
             {[
-              ["dashboard", "Start"],
-              ["media", "Mediathek"],
+              ["dashboard", copy.start],
+              ["media", copy.library],
               ["guide", "EPG"],
-              ["manage", "Verwalten"],
+              ["manage", copy.manage],
             ].map(([key, label]) => (
               <button key={key} className={`hubBtn focusable ${hub === key ? "hubActive" : ""}`} onClick={() => setHub(key)}>
                 {label}
@@ -642,12 +722,10 @@ export default function App() {
             <>
               <section className="card">
                 <h3>Smart Home</h3>
-                <p className="muted">Startseite wie eine echte Streaming-App: Weiter schauen, Live jetzt, Empfehlungen und neue Inhalte.</p>
-                <FeatureOverview />
                 <div className="quickMenu">
-                  <button className="primary focusable" onClick={() => setPage("details")}>Aktuellen Inhalt oeffnen</button>
-                  <button className="secondary focusable" onClick={() => setPage("watch")}>Meine Liste</button>
-                  <button className="secondary focusable" onClick={() => persist("settings", { ...settings, tvMode: !tvMode }, setSettings)}>{tvMode ? "TV-Modus aus" : "TV-Modus an"}</button>
+                  <button className="primary focusable" onClick={() => setPage("details")}>{copy.openCurrent}</button>
+                  <button className="secondary focusable" onClick={() => setPage("watch")}>{copy.myList}</button>
+                  <button className="secondary focusable" onClick={() => updateSetting("tvMode", !tvMode)}>{tvMode ? copy.tvOff : copy.tvOn}</button>
                 </div>
               </section>
               <AutoZapPanel enabled={autoZap} seconds={zapSeconds} setSeconds={(value) => { setZapSeconds(value); save("zapSeconds", value); }} onStart={startAutoZap} onStop={stopAutoZap} current={selectedItem} />
@@ -659,7 +737,7 @@ export default function App() {
           ) : null}
           {hub === "media" ? <section className="card"><h3>Mediathek</h3><p className="muted">Programme sind jetzt uebersichtlicher: Guide-Ansicht, Karten-Ansicht oder kompakte Liste.</p><div className="quickMenu"><button className="primary focusable" onClick={() => { setTab("live"); setGroup("Alle"); }}>Live TV</button><button className="secondary focusable" onClick={() => { setTab("movie"); setGroup("Alle"); }}>Filme</button><button className="secondary focusable" onClick={() => { setTab("series"); setGroup("Alle"); }}>Serien</button><button className="secondary focusable" onClick={() => { setTab("all"); setGroup("Alle"); }}>Alle</button></div></section> : null}
           {hub === "guide" ? <section className="card"><h3>EPG & Planung</h3><p className="muted">Programmuebersicht und Vormerkungen sind zusammengefasst.</p><div className="quickMenu"><button className="primary focusable" onClick={() => setPage("epg")}>EPG oeffnen</button><button className="secondary focusable" onClick={() => setPage("recordings")}>Planungen</button></div></section> : null}
-          {hub === "manage" ? <section className="card"><h3>Verwalten</h3><p className="muted">Import, Kategorien, Systemcheck und Einstellungen sind gesammelt.</p><div className="quickMenu"><button className="primary focusable" onClick={() => setPage("account")}>Import & Einstellungen</button><button className="secondary focusable" onClick={() => setPage("categories")}>Kategorien</button><button className="secondary focusable" onClick={() => setPage("system")}>Systemcheck</button></div></section> : null}
+          {hub === "manage" ? <section className="card"><h3>{copy.manage}</h3><div className="quickMenu"><button className="primary focusable" onClick={() => setPage("account")}>{copy.importSettings}</button><button className="secondary focusable" onClick={() => setPage("categories")}>{copy.categories}</button><button className="secondary focusable" onClick={() => setPage("system")}>{copy.settings}</button></div></section> : null}
           <section className="stats">
             <Stat l="Live TV" v={liveCount} h="sichtbar" />
             <Stat l="Filme" v={movieCount} h="sichtbar" />
@@ -694,17 +772,16 @@ export default function App() {
             <div className="epgProList">{EPG_EVENTS.slice(0, 3).map((event) => <EpgCard key={event.id} event={event} onOpen={openEpgDetails} onRecord={scheduleRecording} tvMode={tvMode} />)}</div>
             <button className="secondary focusable" onClick={() => setPage("epg")}>EPG komplett oeffnen</button>
           </section>
-          <StreamDiagnosticsPanel diagnostics={streamDiagnostics} currentTitle={selectedItem.title} />
         </>
       ) : null}
-      {page === "details" ? <><section className="card"><img className="detailImg" src={selectedItem.cover} /><div className="chips"><span className="chip active">{selectedItem.badge}</span><span className="chip">{selectedItem.year}</span><span className="chip">{selectedItem.duration}</span><span className="chip">{selectedItem.source || "app"}</span></div><h2>{selectedItem.title}</h2><p>{selectedItem.description}</p><button className="primary focusable" onClick={() => nativeAndroid ? playItemNative(selectedItem) : toggleWatch(selectedItem.id)}>{nativeAndroid ? "Nativ starten" : watch.includes(selectedItem.id) ? "Aus Watchlist" : "Zur Watchlist"}</button><button className="secondary focusable" onClick={() => navigator.clipboard?.writeText(selectedItem.streamUrl).then(() => setStatus("Stream-URL kopiert."))}>Stream kopieren</button><button className="danger focusable" onClick={() => deleteItem(selectedItem.id)}>Diesen Sender loeschen</button>{nativeAndroid ? <div className="infoBox">Auf Android wird dieser Stream im nativen ExoPlayer geoeffnet, nicht mehr im WebView.</div> : <Player src={selectedPlaybackUrl} preferHls={selectedPreferHls} preferTs={selectedPreferTs} autoplay={false} onProgress={updateProgress} onEnded={completePlayback} onStatus={setStatus} onDiagnostic={updateDiagnostics} tvMode={tvMode} />}</section><StreamDiagnosticsPanel diagnostics={streamDiagnostics} currentTitle={selectedItem.title} /></> : null}
+      {page === "details" ? <section className="card"><img className="detailImg" src={selectedItem.cover} /><div className="chips"><span className="chip active">{selectedItem.badge}</span><span className="chip">{selectedItem.year}</span><span className="chip">{selectedItem.duration}</span><span className="chip">{selectedItem.source || "app"}</span></div><h2>{selectedItem.title}</h2><p>{selectedItem.description}</p><button className="primary focusable" onClick={() => nativeAndroid ? playItemNative(selectedItem) : toggleWatch(selectedItem.id)}>{nativeAndroid ? "Nativ starten" : watch.includes(selectedItem.id) ? "Aus Watchlist" : "Zur Watchlist"}</button><button className="secondary focusable" onClick={() => navigator.clipboard?.writeText(selectedItem.streamUrl).then(() => setStatus("Stream-URL kopiert."))}>Stream kopieren</button><button className="danger focusable" onClick={() => deleteItem(selectedItem.id)}>Diesen Sender loeschen</button>{nativeAndroid ? null : <Player src={selectedPlaybackUrl} preferHls={selectedPreferHls} preferTs={selectedPreferTs} autoplay={false} onProgress={updateProgress} onEnded={completePlayback} onStatus={setStatus} onDiagnostic={updateDiagnostics} tvMode={tvMode} />}</section> : null}
       {page === "watch" ? <><section className="card"><h3>Weiter ansehen</h3>{continueWatching.length ? <div className="grid">{continueWatching.map((item) => <Card key={item.id} it={item} tvMode={tvMode} onClick={() => setSelectedPersist(item.id)} />)}</div> : <EmptyState title="Noch kein Fortschritt" text="Sobald du Inhalte anschaust, erscheinen sie hier." />}</section><section className="card"><h3>Watchlist</h3>{watchlist.length ? <div className="grid">{watchlist.map((item) => <Card key={item.id} it={item} tvMode={tvMode} onClick={() => setSelectedPersist(item.id)} />)}</div> : <EmptyState title="Watchlist leer" text="Fuege Inhalte ueber Details oder Startseite hinzu." />}</section></> : null}
       {page === "categories" ? <section className="card"><h3>Menue: Kategorie Manager</h3><p className="muted">Kategorien ausblenden, dauerhaft loeschen oder wieder anzeigen. Ausblenden ist sicherer als Loeschen.</p><input className="focusable" placeholder="Kategorie suchen ..." value={categorySearch} onChange={(event) => setCategorySearch(event.target.value)} /><div className="catActions"><button className="secondary focusable" onClick={restoreAllCategories}>Alle wieder anzeigen</button><button className="secondary focusable" onClick={() => setCategorySearch("")}>Suche loeschen</button></div><div className="catList">{categoryList.map((category) => <div className={`catRow focusable ${hiddenSet.has(category.key) ? "catHidden" : ""}`} key={category.key}><div><b>{category.name}</b><small>{category.section} - {category.count} Eintraege - {Object.keys(category.sourceCount).join(", ")}</small></div><button className={hiddenSet.has(category.key) ? "primary focusable" : "secondary focusable"} onClick={() => toggleCategory(category.key)}>{hiddenSet.has(category.key) ? "Einblenden" : "Ausblenden"}</button><button className="danger focusable" onClick={() => deleteCategory(category.key)}>Loeschen</button></div>)}</div></section> : null}
       {page === "epg" ? <><section className="card epgHero"><h3>High-End EPG Modus</h3><p className="muted">Programmuebersicht mit Details, Zeiten und Vormerkungen. Die Planung wird lokal gespeichert; echte Mitschnitte benoetigen spaeter einen Backend-Recorder.</p><input className="focusable" placeholder="Sendung, Sender oder Genre suchen ..." value={epgSearch} onChange={(event) => setEpgSearch(event.target.value)} /><select className="focusable" value={epgFilter} onChange={(event) => setEpgFilter(event.target.value)}>{epgGenres.map((genre) => <option key={genre} value={genre}>{genre}</option>)}</select><EpgTimeline events={epgFiltered} onOpen={openEpgDetails} onRecord={scheduleRecording} minutesOf={minutesOf} /><div className="epgProList">{epgFiltered.map((event) => <EpgCard key={event.id} event={event} onOpen={openEpgDetails} onRecord={scheduleRecording} tvMode={tvMode} />)}</div></section>{selectedEpg ? <section className="card"><h3>Sendungsdetails</h3><div className="chips"><span className="chip active">{selectedEpg.genre}</span><span className="chip">{selectedEpg.start} - {selectedEpg.end}</span><span className="chip">{epgDuration(selectedEpg)}</span></div><h2>{selectedEpg.title}</h2><p className="muted">{selectedEpg.channel}</p><p>{selectedEpg.description}</p><button className="primary focusable" onClick={() => scheduleRecording(selectedEpg)}>Diese Sendung vormerken</button><button className="secondary focusable" onClick={() => setSelectedEpg(null)}>Details schliessen</button></section> : null}</> : null}
       {page === "recordings" ? <section className="card"><h3>Planungsbereich</h3><p className="muted">Hier merkt die App Sendungen nur vor. Das ist keine echte Aufnahmefunktion. Automatische Aufnahmen brauchen einen separaten Backend-Recorder.</p>{recordings.length ? <div className="recordingList">{recordings.map((recording) => <RecordingCard key={recording.id} rec={recording} onRemove={removeRecording} />)}</div> : <EmptyState title="Keine Planungen" text="Oeffne den EPG und merke eine Sendung vor." action="EPG oeffnen" onClick={() => setPage("epg")} />}<button className="secondary focusable" onClick={clearRecordings}>Alle Planungen loeschen</button><div className="infoBox">Produktionshinweis: Ein echter Recorder ist erst aktiv, wenn ein Backend-Dienst die Streams serverseitig verarbeitet.</div></section> : null}
-      {page === "account" ? <><section className="menuGrid"><div className="card"><h3>Xtream Import</h3><input className="focusable" placeholder="Server-URL, z.B. https://example.com:8080" value={auth.server} onChange={(event) => persist("auth", { ...auth, server: event.target.value }, setAuth)} /><input className="focusable" placeholder="Benutzername" value={auth.username} onChange={(event) => persist("auth", { ...auth, username: event.target.value }, setAuth)} /><input className="focusable" placeholder="Passwort" type="password" value={auth.password} onChange={(event) => persist("auth", { ...auth, password: event.target.value }, setAuth)} /><button className="secondary focusable" disabled={busy} onClick={testConn}>Verbindung testen</button><button className="primary focusable" disabled={busy} onClick={importXtream}>{busy ? "Bitte warten ..." : "Xtream importieren"}</button><p className="muted">Zugangsdaten werden nur fuer diese Sitzung gehalten und nicht dauerhaft unverschluesselt gespeichert.</p></div><div className="card"><h3>M3U Import</h3><input className="focusable" placeholder="M3U/M3U8 URL oder direkte M3U hier einfuegen" value={m3uUrl} onChange={(event) => setM3uUrl(event.target.value)} /><button className="primary focusable" disabled={busy} onClick={importM3UFromUrl}>{busy ? "Bitte warten ..." : "M3U laden"}</button><textarea className="focusable" placeholder="Optional: komplette M3U hier einfuegen ..." value={m3uText} onChange={(event) => setM3uText(event.target.value)} /><button className="primary focusable" onClick={importM3UFromText}>M3U Text ersetzen</button><button className="secondary focusable" onClick={mergeM3UText}>M3U Text ergaenzen</button></div></section><SourceProfilesPanel profiles={sourceProfiles} profileName={profileName} setProfileName={setProfileName} onSave={saveCurrentSourceProfile} onApply={applySourceProfile} onRemove={removeSourceProfile} /><section className="card"><h3>TV & Einstellungen</h3><button className={`chip focusable ${tvMode ? "active" : ""}`} onClick={() => persist("settings", { ...settings, tvMode: !tvMode }, setSettings)}>{tvMode ? "TV-Modus aktiv" : "TV-Modus aktivieren"}</button><button className={`chip focusable ${settings.tvDensity === "large" ? "active" : ""}`} onClick={() => persist("settings", { ...settings, tvDensity: "large" }, setSettings)}>TV gross</button><button className={`chip focusable ${settings.tvDensity === "xl" ? "active" : ""}`} onClick={() => persist("settings", { ...settings, tvDensity: "xl" }, setSettings)}>TV extra gross</button>{[["autoplay", "Autoplay"], ["autosave", "Auto-Fortschritt"], ["compact", "Compact Mode"], ["adult", "16+ ausblenden"], ["trailer", "Trailer"], ["motion", "Animationen"], ["safeMode", "Loesch-Schutz"]].map(([key, label]) => <button key={key} className={`chip focusable ${settings[key] ? "active" : ""}`} onClick={() => persist("settings", { ...settings, [key]: !settings[key] }, setSettings)}>{label}</button>)}<button className="secondary focusable" onClick={clearProgress}>Fortschritt loeschen</button><button className="secondary focusable" onClick={resetApp}>App-Inhalte leeren</button><StatusPanel status={status} importStep={importStep} importError={importError} /></section><StreamDiagnosticsPanel diagnostics={streamDiagnostics} currentTitle={selectedItem.title} /></> : null}
-      {page === "system" ? <section className="card"><h3>System</h3><div className="healthGrid"><Stat l="Gesamt" v={health.total} h="Eintraege" /><Stat l="Sichtbar" v={health.visible} h="nach Filter" /><Stat l="Ausgeblendet" v={health.hidden} h="Kategorien" /><Stat l="Watchlist" v={health.watch} h="Eintraege" /><Stat l="Planungen" v={health.recordings} h="lokal" /><Stat l="Auto-Zap" v={autoZap ? "An" : "Aus"} h={`${zapSeconds}s`} /></div><StatusPanel status={status} importStep={importStep} importError={importError} /><button className="secondary focusable" onClick={() => setStatus("Systemcheck OK. Menues, Filter und Speicher sind erreichbar.")}>Systemcheck starten</button><button className="secondary focusable" onClick={() => setPage("account")}>Import-Menue oeffnen</button></section> : null}
-      <nav>{[["home", "Start"], ["watch", "Meine Liste"], ["account", "Import"], ["system", "System"]].map(([key, label]) => <button key={key} className={page === key ? "navActive focusable" : "navBtn focusable"} onClick={() => setPage(key)}>{label}</button>)}</nav>
+      {page === "account" ? <><section className="menuGrid"><div className="card"><h3>Xtream Import</h3><input className="focusable" placeholder="Server-URL, z.B. https://example.com:8080" value={auth.server} onChange={(event) => persist("auth", { ...auth, server: event.target.value }, setAuth)} /><input className="focusable" placeholder="Benutzername" value={auth.username} onChange={(event) => persist("auth", { ...auth, username: event.target.value }, setAuth)} /><input className="focusable" placeholder="Passwort" type="password" value={auth.password} onChange={(event) => persist("auth", { ...auth, password: event.target.value }, setAuth)} /><button className="secondary focusable" disabled={busy} onClick={testConn}>Verbindung testen</button><button className="primary focusable" disabled={busy} onClick={importXtream}>{busy ? "Bitte warten ..." : "Xtream importieren"}</button></div><div className="card"><h3>M3U Import</h3><input className="focusable" placeholder="M3U/M3U8 URL oder direkte M3U hier einfuegen" value={m3uUrl} onChange={(event) => setM3uUrl(event.target.value)} /><button className="primary focusable" disabled={busy} onClick={importM3UFromUrl}>{busy ? "Bitte warten ..." : "M3U laden"}</button><textarea className="focusable" placeholder="Optional: komplette M3U hier einfuegen ..." value={m3uText} onChange={(event) => setM3uText(event.target.value)} /><button className="primary focusable" onClick={importM3UFromText}>M3U Text ersetzen</button><button className="secondary focusable" onClick={mergeM3UText}>M3U Text ergaenzen</button></div></section><SourceProfilesPanel profiles={sourceProfiles} profileName={profileName} setProfileName={setProfileName} onSave={saveCurrentSourceProfile} onApply={applySourceProfile} onRemove={removeSourceProfile} /><StatusPanel status={status} importStep={importStep} importError={importError} /></> : null}
+      {page === "system" ? <section className="settingsPage"><h2>{copy.appSettings}</h2><section className="settingsGroup"><h3>{copy.languageSettings}</h3><div className="settingsGrid"><button className={`settingTile focusable ${language === "de" ? "settingActive" : ""}`} onClick={() => updateSetting("language", "de")}><b>{copy.german}</b><small>Deutsch</small></button><button className={`settingTile focusable ${language === "en" ? "settingActive" : ""}`} onClick={() => updateSetting("language", "en")}><b>{copy.english}</b><small>English</small></button></div></section><section className="settingsGroup"><h3>{copy.tvSettings}</h3><div className="settingsGrid"><button className={`settingTile focusable ${tvMode ? "settingActive" : ""}`} onClick={() => updateSetting("tvMode", !tvMode)}><b>{tvMode ? copy.tvOff : copy.tvOn}</b><small>Leanback Layout</small></button><button className={`settingTile focusable ${settings.tvDensity === "large" ? "settingActive" : ""}`} onClick={() => updateSetting("tvDensity", "large")}><b>{copy.large}</b><small>TV UI</small></button><button className={`settingTile focusable ${settings.tvDensity === "xl" ? "settingActive" : ""}`} onClick={() => updateSetting("tvDensity", "xl")}><b>{copy.xl}</b><small>TV UI</small></button><button className={`settingTile focusable ${settings.startFullscreen ? "settingActive" : ""}`} onClick={() => updateSetting("startFullscreen", !settings.startFullscreen)}><b>{copy.fullscreen}</b><small>Player</small></button></div></section><section className="settingsGroup"><h3>{copy.phoneSettings}</h3><div className="settingsGrid"><button className={`settingTile focusable ${settings.mobileNav ? "settingActive" : ""}`} onClick={() => updateSetting("mobileNav", !settings.mobileNav)}><b>Bottom Navigation</b><small>Handy</small></button><button className={`settingTile focusable ${settings.compact ? "settingActive" : ""}`} onClick={() => updateSetting("compact", !settings.compact)}><b>{copy.compact}</b><small>Listen</small></button><button className={`settingTile focusable ${settings.motion ? "settingActive" : ""}`} onClick={() => updateSetting("motion", !settings.motion)}><b>{copy.animations}</b><small>UI</small></button></div></section><section className="settingsGroup"><h3>{copy.playerSettings}</h3><div className="settingsGrid"><button className={`settingTile focusable ${settings.autoplay ? "settingActive" : ""}`} onClick={() => updateSetting("autoplay", !settings.autoplay)}><b>{copy.autoplay}</b><small>Streamstart</small></button><button className={`settingTile focusable ${settings.playerMode === "native" ? "settingActive" : ""}`} onClick={() => updateSetting("playerMode", "native")}><b>{copy.nativePlayer}</b><small>Android TS/HLS</small></button><button className={`settingTile focusable ${settings.playerFit === "contain" ? "settingActive" : ""}`} onClick={() => updateSetting("playerFit", "contain")}><b>{copy.fitContain}</b><small>Bildformat</small></button><button className={`settingTile focusable ${settings.playerFit === "cover" ? "settingActive" : ""}`} onClick={() => updateSetting("playerFit", "cover")}><b>{copy.fitCover}</b><small>Bildformat</small></button>{[["eco", copy.bufferEco], ["normal", copy.bufferNormal], ["strong", copy.bufferStrong]].map(([value, label]) => <button key={value} className={`settingTile focusable ${settings.bufferMode === value ? "settingActive" : ""}`} onClick={() => updateSetting("bufferMode", value)}><b>{label}</b><small>Buffer</small></button>)}</div></section><section className="settingsGroup"><h3>Sicherheit</h3><div className="settingsGrid"><button className={`settingTile focusable ${settings.adult ? "settingActive" : ""}`} onClick={() => updateSetting("adult", !settings.adult)}><b>{copy.adult}</b><small>Filter</small></button><button className={`settingTile focusable ${settings.safeMode ? "settingActive" : ""}`} onClick={() => updateSetting("safeMode", !settings.safeMode)}><b>{copy.safeDelete}</b><small>Schutz</small></button><button className="settingTile focusable" onClick={clearProgress}><b>{copy.clearProgress}</b><small>Verlauf</small></button><button className="settingTile danger focusable" onClick={resetApp}><b>{copy.clearApp}</b><small>Reset</small></button></div></section></section> : null}
+      <nav className={settings.mobileNav ? "" : "navHidden"}>{[["home", copy.start], ["watch", copy.myList], ["account", copy.import], ["system", copy.settings]].map(([key, label]) => <button key={key} className={page === key ? "navActive focusable" : "navBtn focusable"} onClick={() => setPage(key)}>{label}</button>)}</nav>
     </div>
   );
 }

@@ -195,19 +195,6 @@ export function CommandBar({ search, setSearch, tab, setTab, group, setGroup, gr
   );
 }
 
-export function MiniStatus({ busy, autoZap, tvMode, hidden, recordings }) {
-  return (
-    <div className="miniStatus">
-      <span className={busy ? "dot busy" : "dot"} />
-      <b>{busy ? "Laedt" : "Bereit"}</b>
-      <small>TV: {tvMode ? "An" : "Aus"}</small>
-      <small>Zap: {autoZap ? "An" : "Aus"}</small>
-      <small>Ausgeblendet: {hidden}</small>
-      <small>Planung: {recordings}</small>
-    </div>
-  );
-}
-
 export function EpgTimeline({ events, onOpen, onRecord, minutesOf }) {
   const startBase = 18 * 60;
   const endBase = 24 * 60;
@@ -249,17 +236,6 @@ export function EpgTimeline({ events, onOpen, onRecord, minutesOf }) {
   );
 }
 
-export function FinalAuditPanel() {
-  const points = ["Native Player", "Import", "EPG", "Auto-Zapping", "Kategorie Manager", "Backend vorbereitet", "TV/Fire-TV UI"];
-  return (
-    <section className="finalAuditPanel">
-      <div className="badge">Release Check</div>
-      <h3>Systemstatus</h3>
-      <div className="auditGrid">{points.map((point) => <span key={point}>OK {point}</span>)}</div>
-    </section>
-  );
-}
-
 export function StatusPanel({ status, importStep, importError }) {
   return (
     <div className="statusPanel">
@@ -269,17 +245,6 @@ export function StatusPanel({ status, importStep, importError }) {
       {importError ? <div className="errorBox">{importError}</div> : null}
     </div>
   );
-}
-
-export function FeatureOverview() {
-  const features = [
-    ["Mediathek", "Live, Filme und Serien in einem klaren Bereich"],
-    ["EPG", "Programm und Planung zusammen"],
-    ["Verwalten", "Import, Kategorien und Einstellungen gesammelt"],
-    ["TV-Modus", "Fernbedienung und grosse Darstellung"],
-  ];
-
-  return <div className="featureGrid">{features.map(([title, text]) => <div className="featureBox focusable" tabIndex="0" key={title}><b>{title}</b><small>{text}</small></div>)}</div>;
 }
 
 export function EpgCard({ event, onOpen, onRecord, tvMode }) {
@@ -357,35 +322,6 @@ export function SourceProfilesPanel({ profiles, profileName, setProfileName, onS
           </div>
         )) : <EmptyState title="Noch keine Profile" text="Speichere eine Quelle, damit sie hier wieder auftaucht." />}
       </div>
-    </section>
-  );
-}
-
-export function StreamDiagnosticsPanel({ diagnostics, currentTitle }) {
-  const updatedLabel = diagnostics.updatedAt ? new Date(diagnostics.updatedAt).toLocaleTimeString("de-DE") : "noch nie";
-
-  return (
-    <section className="card">
-      <h3>Stream-Diagnose</h3>
-      <div className="healthGrid">
-        <div className="stat focusable">
-          <small>Aktueller Titel</small>
-          <b>{currentTitle || "Kein Stream"}</b>
-        </div>
-        <div className="stat focusable">
-          <small>Status</small>
-          <b>{diagnostics.state || "idle"}</b>
-        </div>
-        <div className="stat focusable">
-          <small>Letztes Update</small>
-          <b>{updatedLabel}</b>
-        </div>
-        <div className="stat focusable">
-          <small>Fehler</small>
-          <b>{diagnostics.lastError || "Keiner"}</b>
-        </div>
-      </div>
-      {diagnostics.lastUrl ? <div className="infoBox">Quelle: {diagnostics.lastUrl}</div> : null}
     </section>
   );
 }
